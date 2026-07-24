@@ -1,4 +1,5 @@
-import FirstStep from "./components/onboarding/FirstStep";
+import React from "react";
+import FirstStep from "./pages/FirstStep";
 function App() {
   return (
     <>
