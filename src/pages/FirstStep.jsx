@@ -4,10 +4,27 @@ import GenderSelector from "../components/GenderSelector";
 import ActivityCard from "../components/ActivityCard";
 import GoalCard from "../components/GoalCard";
 import Button from "../components/Button";
+import { useState } from "react";
 
 import smoothie from "../assets/smoothie.jpg";
 
 export default function FirstPage() {
+  const [formData, setFormData] = useState({
+    fullName: "",
+    age: "",
+    weight: "",
+    height: "",
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-8">
       <div className="w-full max-w-7xl bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col lg:flex-row">
@@ -49,10 +66,11 @@ export default function FirstPage() {
 
         {/* RIGHT PANEL */}
 
-        <div className="p-25 flex-1">
+        <div className="flex-1 p-6 md:p-10 lg:p-16 xl:p-20">
           <ProgressBar />
 
-          <h1 className="mt-20 text-6xl font-bold">
+          <h1 className="mt-10 md:mt-16 text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
+            {" "}
             Welcome to
             <br />
             Vitals & Vitality
@@ -65,12 +83,42 @@ export default function FirstPage() {
 
           {/* INPUTS */}
 
-          <div className="grid grid-cols-2 gap-6 mt-10">
-            <InputField label="Full Name" />
-            <InputField label="Age" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10">
+            <InputField
+              label="Full Name"
+              name="fullName"
+              type="text"
+              placeholder="John Doe"
+              value={formData.fullName}
+              onChange={handleChange}
+            />
 
-            <InputField label="Weight (kg)" />
-            <InputField label="Height (cm)" />
+            <InputField
+              label="Age"
+              name="age"
+              type="number"
+              placeholder="28"
+              value={formData.age}
+              onChange={handleChange}
+            />
+
+            <InputField
+              label="Weight (kg)"
+              name="weight"
+              type="number"
+              placeholder="70"
+              value={formData.weight}
+              onChange={handleChange}
+            />
+
+            <InputField
+              label="Height (cm)"
+              name="height"
+              type="number"
+              placeholder="175"
+              value={formData.height}
+              onChange={handleChange}
+            />
           </div>
 
           <GenderSelector />
