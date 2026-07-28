@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import FirstStep from "./pages/FirstStep";
 import SecondStep from "./pages/SecondStep";
-//import ThirdStep from "./pages/ThirdStep";
+import ThirdStep from "./pages/ThirdStep";
 //import Summary from "./pages/Summary";
 
 export default function App() {

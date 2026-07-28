@@ -5,26 +5,22 @@ export default function DietSection() {
   const diets = [
     {
       title: "Vegan",
-      description:
-        "No animal products, focused on plant-based vitality.",
+      description: "No animal products, focused on plant-based vitality.",
       icon: "🌿",
     },
     {
       title: "Keto",
-      description:
-        "High fat, low carb to fuel your body with ketones.",
+      description: "High fat, low carb to fuel your body with ketones.",
       icon: "⚡",
     },
     {
       title: "Paleo",
-      description:
-        "Whole foods focused on what our ancestors ate.",
+      description: "Whole foods focused on what our ancestors ate.",
       icon: "🌲",
     },
     {
       title: "Gluten-Free",
-      description:
-        "Complete avoidance of gluten-containing grains.",
+      description: "Complete avoidance of gluten-containing grains.",
       icon: "🍇",
     },
   ];
@@ -44,9 +40,7 @@ export default function DietSection() {
       {/* Heading */}
 
       <div className="flex items-center gap-3 mb-8">
-        <h2 className="text-3xl font-bold">
-          Dietary Preferences
-        </h2>
+        <h2 className="text-2xl font-bold">Dietary Preferences</h2>
 
         <span className="bg-orange-100 text-orange-500 text-xs font-semibold px-3 py-1 rounded-full">
           MULTI-SELECT
@@ -55,7 +49,8 @@ export default function DietSection() {
 
       {/* Cards */}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-7">
+      <div className="grid grid-cols-2 gap-5 max-w-xl">
+        {" "}
         {diets.map((diet) => (
           <DietCard
             key={diet.title}

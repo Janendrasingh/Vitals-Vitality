@@ -1,6 +1,7 @@
 import ProgressBar from "../components/common/ProgressBar";
 import Button from "../components/common/Button";
 import DietSection from "../components/step2/DietSections";
+import AllergySection from "../components/step2/AllergySection";
 
 import SecondStepImage from "../assets/SecondStepBG.png";
 
@@ -35,13 +36,9 @@ export default function SecondStep({
 
           <div className="flex justify-between items-start mt-2">
 
-            <h1 className="text-5xl font-bold text-gray-900">
+            <h1 className="text-4xl font-bold text-gray-900">
               Tailor Your Palette
             </h1>
-
-            <span className="text-gray-500 font-medium">
-              Step 02/04
-            </span>
 
           </div>
 
@@ -51,15 +48,21 @@ export default function SecondStep({
             <ProgressBar step={step} />
           </div>
 
-          {/* ================= DIET SECTION ================= */}
+{/* ================= DIET SECTION ================= */}
 
-          <div className="mt-10">
-            <DietSection />
-          </div>
+<div className="mt-10">
+  <DietSection />
+</div>
 
-          {/* ================= BUTTONS ================= */}
+{/* ================= ALLERGY SECTION ================= */}
 
-          <div className="flex justify-between items-center mt-14">
+<div className="mt-12">
+  <AllergySection />
+</div>
+
+{/* ================= BUTTONS ================= */}
+
+<div className="flex justify-between items-center mt-16">
 
             <button
               onClick={prevStep}
