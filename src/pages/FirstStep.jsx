@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import ProgressBar from "../components/common/ProgressBar";
-import InputField from "../components/common/InputField";
+import InputField from "../components/step1/InputField";
 import GenderSelector from "../components/step1/GenderSelector";
 import ActivityCard from "../components/step1/ActivityCard";
 import GoalCard from "../components/step1/GoalCard";
@@ -118,7 +118,7 @@ export default function FirstStep({ step, nextStep }) {  const goals = [
               label="Full Name"
               name="fullName"
               type="text"
-              placeholder="John Doe"
+              placeholder=""
               value={formData.fullName}
               onChange={handleChange}
             />

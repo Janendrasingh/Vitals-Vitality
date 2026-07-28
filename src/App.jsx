@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import FirstStep from "./pages/FirstStep";
-//import SecondStep from "./pages/SecondStep";
+import SecondStep from "./pages/SecondStep";
 //import ThirdStep from "./pages/ThirdStep";
 //import Summary from "./pages/Summary";
 
@@ -56,11 +56,6 @@ export default function App() {
       );
 
     default:
-      return (
-        <FirstStep
-          step={1}
-          nextStep={nextStep}
-        />
-      );
+      return <FirstStep step={1} nextStep={nextStep} />;
   }
 }
