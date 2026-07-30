@@ -25,7 +25,7 @@ export default function DietSection() {
     },
   ];
 
-  const [selected, setSelected] = useState(["Keto"]);
+  const [selected, setSelected] = useState([]);
 
   const toggleDiet = (diet) => {
     if (selected.includes(diet)) {
