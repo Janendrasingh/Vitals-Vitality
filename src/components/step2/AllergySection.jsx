@@ -1,7 +1,7 @@
 import { useState } from "react";
 import AllergyChip from "./AllergyChip";
 
-export default function AllergySection() {
+export default function AllergySection({ selected, customAllergies, onChange }) {
   const defaultAllergies = [
     { id: 1, name: "Dairy", icon: "🥛" },
     { id: 2, name: "Peanuts", icon: "🥜" },
@@ -10,19 +10,15 @@ export default function AllergySection() {
     { id: 5, name: "Honey", icon: "🍯" },
   ];
 
-  const [selected, setSelected] = useState([]);
-
   const [showInput, setShowInput] = useState(false);
 
   const [customValue, setCustomValue] = useState("");
 
-  const [customAllergies, setCustomAllergies] = useState([]);
-
   const toggleSelection = (name) => {
     if (selected.includes(name)) {
-      setSelected(selected.filter((item) => item !== name));
+      onChange(selected.filter((item) => item !== name), customAllergies);
     } else {
-      setSelected([...selected, name]);
+      onChange([...selected, name], customAllergies);
     }
   };
 
@@ -32,8 +28,7 @@ export default function AllergySection() {
     if (!value) return;
 
     if (!customAllergies.includes(value)) {
-      setCustomAllergies([...customAllergies, value]);
-      setSelected([...selected, value]);
+      onChange([...selected, value], [...customAllergies, value]);
     }
 
     setCustomValue("");
@@ -41,18 +36,11 @@ export default function AllergySection() {
   };
 
   const removeCustom = (name) => {
-    setCustomAllergies(
-      customAllergies.filter((item) => item !== name)
-    );
-
-    setSelected(
-      selected.filter((item) => item !== name)
-    );
+    onChange(selected.filter((item) => item !== name), customAllergies.filter((item) => item !== name));
   };
 
   const clearAll = () => {
-    setSelected([]);
-    setCustomAllergies([]);
+    onChange([], []);
   };
 
   return (

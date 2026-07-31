@@ -1,7 +1,4 @@
-import { useState } from "react";
-
-export default function GenderSelector() {
-  const [gender, setGender] = useState("");
+export default function GenderSelector({ value, onChange }) {
 
   const genders = ["Male", "Female", "Non-Binary"];
 
@@ -15,7 +12,7 @@ export default function GenderSelector() {
         {genders.map((item) => (
           <button
             key={item}
-            onClick={() => setGender(item)}
+            onClick={() => onChange(item)}
             className={`
               py-3 px-6
               rounded-full
@@ -25,7 +22,7 @@ export default function GenderSelector() {
               border-2
 
               ${
-                gender === item
+                value === item
                   ? "bg-[#2B7C32] text-white border-green-600 shadow-lg scale-105"
                   : "bg-white text-gray-700 border-gray-300 hover:border-green-500 hover:bg-green-50"
               }
@@ -36,9 +33,9 @@ export default function GenderSelector() {
         ))}
       </div>
 
-      {gender && (
+      {value && (
         <p className="mt-4 text-green-600 font-medium">
-          Selected Gender: <span className="font-bold">{gender}</span>
+          Selected Gender: <span className="font-bold">{value}</span>
         </p>
       )}
     </div>

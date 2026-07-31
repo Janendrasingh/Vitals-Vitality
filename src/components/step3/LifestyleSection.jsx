@@ -1,18 +1,9 @@
-import { useState } from "react";
-
 import WeightInput from "./WeightInput";
-import GoalSelector from "./GoalSelector";
 import ActivitySlider from "./ActivitySlider";
 
-export default function LifestyleSection(){
+export default function LifestyleSection({ formData, setFormData }){
 
-const[targetWeight,setTargetWeight]=useState("");
-
-const[goal,setGoal]=useState("Maintain");
-
-const[activity,setActivity]=useState(50);
-
-const[description,setDescription]=useState("");
+const update = (field, value) => setFormData((previous) => ({ ...previous, [field]: value }));
 
 return(
 
@@ -20,22 +11,15 @@ return(
 
 <WeightInput
 
-value={targetWeight}
-onChange={setTargetWeight}
-
-/>
-
-<GoalSelector
-
-goal={goal}
-setGoal={setGoal}
+value={formData.targetWeight}
+onChange={(value) => update("targetWeight", value)}
 
 />
 
 <ActivitySlider
 
-activity={activity}
-setActivity={setActivity}
+activity={formData.activityScore}
+setActivity={(value) => update("activityScore", value)}
 
 />
 
@@ -51,9 +35,9 @@ Describe your Typical Day
 
 rows={4}
 
-value={description}
+value={formData.typicalDay}
 
-onChange={(e)=>setDescription(e.target.value)}
+onChange={(e)=>update("typicalDay", e.target.value)}
 
 placeholder="e.g Office job, walk 30 mins daily, 3 gym sessions per week..."
 

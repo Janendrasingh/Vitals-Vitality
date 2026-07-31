@@ -6,7 +6,7 @@ import AllergySection from "../components/step2/AllergySection";
 import SecondStepImage from "../assets/SecondStepBG.png";
 import Logo from "../assets/logo.png";
 
-export default function SecondStep({ step, nextStep, prevStep }) {
+export default function SecondStep({ step, nextStep, prevStep, formData, setFormData }) {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-6">
       <div className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row">
@@ -98,13 +98,22 @@ export default function SecondStep({ step, nextStep, prevStep }) {
           {/* ================= DIET SECTION ================= */}
 
           <div className="mt-10">
-            <DietSection />
+            <DietSection
+              selected={formData.diets}
+              onChange={(diets) => setFormData((previous) => ({ ...previous, diets }))}
+            />
           </div>
 
           {/* ================= ALLERGY SECTION ================= */}
 
           <div className="mt-12">
-            <AllergySection />
+            <AllergySection
+              selected={formData.allergies}
+              customAllergies={formData.customAllergies}
+              onChange={(allergies, customAllergies) =>
+                setFormData((previous) => ({ ...previous, allergies, customAllergies }))
+              }
+            />
           </div>
 
           {/* ================= BUTTONS ================= */}

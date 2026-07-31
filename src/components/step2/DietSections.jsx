@@ -1,7 +1,6 @@
-import { useState } from "react";
 import DietCard from "./DietCard";
 
-export default function DietSection() {
+export default function DietSection({ selected, onChange }) {
   const diets = [
     {
       title: "Vegan",
@@ -25,13 +24,11 @@ export default function DietSection() {
     },
   ];
 
-  const [selected, setSelected] = useState([]);
-
   const toggleDiet = (diet) => {
     if (selected.includes(diet)) {
-      setSelected(selected.filter((item) => item !== diet));
+      onChange(selected.filter((item) => item !== diet));
     } else {
-      setSelected([...selected, diet]);
+      onChange([...selected, diet]);
     }
   };
 

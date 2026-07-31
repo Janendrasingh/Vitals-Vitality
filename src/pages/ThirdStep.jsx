@@ -9,6 +9,8 @@ export default function ThirdStep({
   step,
   nextStep,
   prevStep,
+  formData,
+  setFormData,
 }) {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-6">
@@ -123,7 +125,7 @@ export default function ThirdStep({
 
           <div className="mt-12">
 
-            <LifestyleSection />
+            <LifestyleSection formData={formData} setFormData={setFormData} />
 
           </div>
 

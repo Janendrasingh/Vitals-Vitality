@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import ProgressBar from "../components/common/ProgressBar";
 import InputField from "../components/step1/InputField";
 import GenderSelector from "../components/step1/GenderSelector";
@@ -7,9 +5,9 @@ import ActivityCard from "../components/step1/ActivityCard";
 import GoalCard from "../components/step1/GoalCard";
 import Button from "../components/common/Button";
 
-import smoothie from "../assets/smoothie.jpg";
+import smoothie from "../assets/FirstStepBG.jpg";
 
-export default function FirstStep({ step, nextStep }) {  const goals = [
+export default function FirstStep({ step, nextStep, formData, setFormData }) {  const goals = [
     {
       title: "Weight Loss",
       description: "Calorie deficit focus",
@@ -44,16 +42,6 @@ export default function FirstStep({ step, nextStep }) {  const goals = [
       icon: "🏋️",
     },
   ];
-
-  const [formData, setFormData] = useState({
-    fullName: "",
-    age: "",
-    weight: "",
-    height: "",
-    gender: "",
-    activity: "",
-    goal: "",
-  });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
