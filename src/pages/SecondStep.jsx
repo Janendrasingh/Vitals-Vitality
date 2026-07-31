@@ -4,6 +4,7 @@ import DietSection from "../components/step2/DietSections";
 import AllergySection from "../components/step2/AllergySection";
 
 import SecondStepImage from "../assets/SecondStepBG.png";
+import Logo from "../assets/logo.png";
 
 export default function SecondStep({ step, nextStep, prevStep }) {
   return (
@@ -21,12 +22,21 @@ export default function SecondStep({ step, nextStep, prevStep }) {
           />
 
           {/* Logo */}
+{/* Logo */}
 
-          <div className="absolute top-10 left-10">
-            <h1 className="text-4xl font-bold text-white italic">
-              Vitals & Vitality
-            </h1>
-          </div>
+<div className="absolute top-10 left-10 flex items-center gap-4">
+
+  <img
+    src={Logo}
+    alt="Vitals & Vitality"
+    className="w-12 h-12 object-contain"
+  />
+
+  <h1 className="text-4xl font-bold italic text-white tracking-tight">
+    Vitals & Vitality
+  </h1>
+
+</div>
 
           {/* Quote Card */}
 
