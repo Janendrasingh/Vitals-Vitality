@@ -57,7 +57,7 @@ export default function FirstStep({ step, nextStep, formData, setFormData }) {  
       <div className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row">
         {/* ================= LEFT PANEL ================= */}
 
-        <div className="lg:w-2/5 bg-gradient-to-br from-green-50 to-white p-10 flex flex-col">
+        <div className="lg:w-2/5 bg-liner-to-br from-green-50 to-white p-10 flex flex-col">
           <h1 className="text-4xl font-extrabold text-green-700">
             Vitals & Vitality
           </h1>
