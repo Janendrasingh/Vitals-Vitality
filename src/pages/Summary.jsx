@@ -4,7 +4,7 @@ import SummaryBG from "../assets/FourthStepBG.png";
 
 import SummarySection from "../components/step4/SummarySection";
 
-export default function Summary({ userData, prevStep }) {
+export default function Summary({ userData, onGoDashboard }) {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-6">
       <div className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row">
@@ -93,7 +93,7 @@ export default function Summary({ userData, prevStep }) {
           <div className="mt-10">
             <button
               type="button"
-              onClick={prevStep}
+              onClick={onGoDashboard}
               className="w-full rounded-full bg-linear-to-r from-[#038935] to-[#7FD37D] px-8 py-4 text-lg font-semibold text-white shadow-lg transition hover:scale-[1.02]"
             >
               Go to Dashboard →

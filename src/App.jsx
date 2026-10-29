@@ -4,6 +4,7 @@ import FirstStep from "./pages/FirstStep";
 import SecondStep from "./pages/SecondStep";
 import ThirdStep from "./pages/ThirdStep";
 import Summary from "./pages/Summary";
+import Dashboard from "./pages/Dashboard";
 
 export default function App() {
   const [step, setStep] = useState(1);
@@ -72,10 +73,13 @@ export default function App() {
       return (
         <Summary
           step={step}
-          prevStep={prevStep}
           userData={formData}
+          onGoDashboard={() => setStep(5)}
         />
       );
+
+    case 5:
+      return <Dashboard userData={formData} />;
 
     default:
       return <FirstStep step={1} nextStep={nextStep} />;
