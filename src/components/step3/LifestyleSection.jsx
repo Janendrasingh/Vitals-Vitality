@@ -34,6 +34,7 @@ Describe your Typical Day
 <textarea
 
 rows={4}
+maxLength={2000}
 
 value={formData.typicalDay}
 

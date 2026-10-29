@@ -11,6 +11,7 @@ export default function ThirdStep({
   prevStep,
   formData,
   setFormData,
+  onReturnDashboard,
 }) {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-6">
@@ -132,13 +133,24 @@ export default function ThirdStep({
           {/* Buttons */}
 
           <div className="flex justify-between items-center mt-16">
-
-            <button
-              onClick={prevStep}
-              className="text-gray-600 hover:text-green-600 transition font-medium"
-            >
-              ← Go Back
-            </button>
+            <div className="flex flex-wrap items-center gap-5">
+              <button
+                onClick={prevStep}
+                className="text-gray-600 hover:text-green-600 transition font-medium"
+                type="button"
+              >
+                ← Go Back
+              </button>
+              {onReturnDashboard && (
+                <button
+                  onClick={onReturnDashboard}
+                  className="text-gray-600 hover:text-green-600 transition font-medium"
+                  type="button"
+                >
+                  Back to Dashboard
+                </button>
+              )}
+            </div>
 
             <Button onClick={nextStep} />
 

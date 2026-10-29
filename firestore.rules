@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedInAs(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function validProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'email', 'fullName', 'age', 'weight', 'height', 'gender',
+          'activity', 'goal', 'diets', 'allergies', 'customAllergies',
+          'targetWeight', 'lifestyleGoal', 'activityScore', 'typicalDay',
+          'onboardingComplete', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'email', 'fullName', 'age', 'weight', 'height', 'gender',
+          'activity', 'goal', 'diets', 'allergies', 'customAllergies',
+          'targetWeight', 'lifestyleGoal', 'activityScore', 'typicalDay',
+          'onboardingComplete', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string
+        && data.email is string
+        && data.email.size() <= 320
+        && data.fullName is string
+        && data.fullName.size() <= 100
+        && data.age is string
+        && data.age.size() <= 10
+        && data.weight is string
+        && data.weight.size() <= 10
+        && data.height is string
+        && data.height.size() <= 10
+        && data.gender is string
+        && data.gender.size() <= 50
+        && data.activity is string
+        && data.activity.size() <= 50
+        && data.goal is string
+        && data.goal.size() <= 100
+        && data.diets is list
+        && data.diets.size() <= 30
+        && data.allergies is list
+        && data.allergies.size() <= 30
+        && data.customAllergies is list
+        && data.customAllergies.size() <= 30
+        && data.targetWeight is string
+        && data.targetWeight.size() <= 10
+        && data.lifestyleGoal is string
+        && data.lifestyleGoal.size() <= 100
+        && data.activityScore is number
+        && data.activityScore >= 0
+        && data.activityScore <= 100
+        && data.typicalDay is string
+        && data.typicalDay.size() <= 2000
+        && data.onboardingComplete is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if signedInAs(userId);
+      allow list: if false;
+      allow create: if signedInAs(userId)
+        && request.resource.data.uid == userId
+        && request.resource.data.email == request.auth.token.email
+        && validProfile(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedInAs(userId)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validProfile(request.resource.data)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+  }
+}

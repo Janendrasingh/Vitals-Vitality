@@ -7,7 +7,8 @@ import Button from "../components/common/Button";
 
 import smoothie from "../assets/FirstStepBG.jpg";
 
-export default function FirstStep({ step, nextStep, formData, setFormData }) {  const goals = [
+export default function FirstStep({ step, nextStep, formData, setFormData, onReturnDashboard }) {
+  const goals = [
     {
       title: "Weight Loss",
       description: "Calorie deficit focus",
@@ -202,9 +203,17 @@ export default function FirstStep({ step, nextStep, formData, setFormData }) {  
           {/* ================= BUTTONS ================= */}
 
           <div className="flex justify-between items-center mt-12">
-            <button className="text-gray-500 hover:text-green-600 transition">
-              Skip for now
-            </button>
+            {onReturnDashboard ? (
+              <button
+                className="text-gray-500 hover:text-green-600 transition"
+                onClick={onReturnDashboard}
+                type="button"
+              >
+                Back to Dashboard
+              </button>
+            ) : (
+              <span />
+            )}
 
             <Button onClick={nextStep} />
           </div>

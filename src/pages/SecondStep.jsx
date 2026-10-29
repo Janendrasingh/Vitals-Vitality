@@ -6,7 +6,7 @@ import AllergySection from "../components/step2/AllergySection";
 import SecondStepImage from "../assets/SecondStepBG.png";
 import Logo from "../assets/logo.png";
 
-export default function SecondStep({ step, nextStep, prevStep, formData, setFormData }) {
+export default function SecondStep({ step, nextStep, prevStep, formData, setFormData, onReturnDashboard }) {
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-6">
       <div className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row">
@@ -119,12 +119,24 @@ export default function SecondStep({ step, nextStep, prevStep, formData, setForm
           {/* ================= BUTTONS ================= */}
 
           <div className="flex justify-between items-center mt-16">
-            <button
-              onClick={prevStep}
-              className="text-gray-600 hover:text-green-600 font-medium transition"
-            >
-              ← Go Back
-            </button>
+            <div className="flex flex-wrap items-center gap-5">
+              <button
+                onClick={prevStep}
+                className="text-gray-600 hover:text-green-600 font-medium transition"
+                type="button"
+              >
+                ← Go Back
+              </button>
+              {onReturnDashboard && (
+                <button
+                  onClick={onReturnDashboard}
+                  className="text-gray-600 hover:text-green-600 font-medium transition"
+                  type="button"
+                >
+                  Back to Dashboard
+                </button>
+              )}
+            </div>
 
             <Button onClick={nextStep} />
           </div>
