@@ -244,6 +244,7 @@ export default function App() {
           userData={formData}
           setUserData={updateFormData}
           onEditStep={editStep}
+          userId={user.uid}
           onSignOut={handleSignOut}
           accountEmail={user.email}
           profileSaveStatus={saveStatus}

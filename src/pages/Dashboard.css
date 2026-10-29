@@ -452,6 +452,18 @@
   flex: 1;
 }
 
+.dashboard-fit-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-fit-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .dashboard-fit-title-row {
   display: flex;
   align-items: center;
@@ -1457,7 +1469,8 @@
   }
 
   .dashboard-fit-card > .dashboard-primary-button,
-  .dashboard-fit-card > .dashboard-secondary-button {
+  .dashboard-fit-card > .dashboard-secondary-button,
+  .dashboard-fit-actions {
     width: 100%;
   }
 

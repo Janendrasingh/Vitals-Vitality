@@ -72,6 +72,26 @@ service cloud.firestore {
         && validProfile(request.resource.data)
         && request.resource.data.updatedAt == request.time;
       allow delete: if false;
+
+      match /fitnessDaily/{date} {
+        allow get, list: if signedInAs(userId);
+        allow create, update, delete: if false;
+      }
+
+      match /workouts/{workoutId} {
+        allow get, list: if signedInAs(userId);
+        allow create, update, delete: if false;
+      }
+
+      match /integrations/{providerId} {
+        allow get: if signedInAs(userId);
+        allow list: if false;
+        allow create, update, delete: if false;
+      }
+
+      match /privateIntegrations/{integrationId} {
+        allow read, write: if false;
+      }
     }
   }
 }

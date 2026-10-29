@@ -11,6 +11,9 @@ node_modules
 dist
 dist-ssr
 *.local
+functions/node_modules
+functions/.env.*
+!functions/.env.example
 
 # Editor directories and files
 .vscode/*

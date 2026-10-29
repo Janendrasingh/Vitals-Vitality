@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Bell,
@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { calculateNutrition } from "../components/step4/nutritionCalculator";
+import { useFitnessIntegration } from "../fitness/useFitnessIntegration";
 import "./Dashboard.css";
 
 const navigation = [
@@ -157,12 +158,11 @@ function emptyDashboardState() {
     weightEntries: [],
     workouts: [],
     steps: 0,
-    fitMetrics: null,
   };
 }
 
-function readDashboardState() {
-  const savedState = localStorage.getItem("vitalsDashboard");
+function readDashboardState(userId) {
+  const savedState = localStorage.getItem(`vitalsDashboard:${userId}`);
   if (!savedState) return emptyDashboardState();
 
   const parsedState = JSON.parse(savedState);
@@ -173,9 +173,12 @@ function readDashboardState() {
     };
   }
 
+  const savedDashboardData = Object.fromEntries(
+    Object.entries(parsedState).filter(([key]) => key !== "fitMetrics")
+  );
   return {
     ...emptyDashboardState(),
-    ...parsedState,
+    ...savedDashboardData,
     meals: Array.isArray(parsedState.meals) ? parsedState.meals : [],
     workouts: Array.isArray(parsedState.workouts) ? parsedState.workouts : [],
     weightEntries: Array.isArray(parsedState.weightEntries) ? parsedState.weightEntries : [],
@@ -183,15 +186,6 @@ function readDashboardState() {
       ? Math.min(Math.max(parsedState.waterGlasses, 0), 10)
       : 0,
     steps: Math.max(Number(parsedState.steps) || 0, 0),
-    fitMetrics: parsedState.fitMetrics
-      ? {
-          ...parsedState.fitMetrics,
-          steps: Number(parsedState.fitMetrics.steps) || 0,
-          calories: Number(parsedState.fitMetrics.calories) || 0,
-          distanceMeters: Number(parsedState.fitMetrics.distanceMeters) || 0,
-          sessions: Array.isArray(parsedState.fitMetrics.sessions) ? parsedState.fitMetrics.sessions : [],
-        }
-      : null,
   };
 }
 
@@ -231,17 +225,50 @@ function satisfiesDiets(meal, diets) {
   return diets.every((diet) => meal.tags.includes(diet));
 }
 
-function getActivitySummary(workouts, steps, fitMetrics) {
-  const allWorkouts = [...workouts, ...(fitMetrics?.sessions || [])].sort((a, b) => a.time - b.time);
-  const caloriesBurned = workouts.reduce((total, workout) => total + workout.calories, 0);
-  const workoutMinutes = allWorkouts.reduce((total, workout) => total + workout.minutes, 0);
-  const effectiveSteps = Math.max(steps, fitMetrics?.steps || 0);
-  const intensity = caloriesBurned >= 350 || workoutMinutes >= 50 || effectiveSteps >= 10000
+function getActivitySummary(workouts, steps, fitnessDaily, fitnessWorkouts) {
+  const importedWorkouts = fitnessWorkouts.map((workout) => ({
+    id: `${workout.provider}-${workout.sourceWorkoutId}`,
+    provider: workout.provider,
+    label: workout.activityType === "unknown" ? "Imported workout" : workout.activityType,
+    type: recommendationWorkoutType(workout.activityType),
+    minutes: workout.durationMinutes,
+    calories: workout.activeCaloriesKcal,
+    averageHeartRateBpm: workout.averageHeartRateBpm,
+    steps: null,
+    time: workout.endTimeMs,
+  }));
+  const allWorkouts = [...workouts, ...importedWorkouts].sort((a, b) => a.time - b.time);
+  const manualWorkoutMinutes = workouts.reduce((total, workout) => total + workout.minutes, 0);
+  const workoutMinutes = fitnessDaily?.workoutDurationMinutes ?? manualWorkoutMinutes;
+  const activeCaloriesKcal = fitnessDaily?.activeCaloriesKcal ?? null;
+  const reportedSteps = fitnessDaily?.steps ?? (steps > 0 ? steps : null);
+  const effectiveSteps = reportedSteps ?? 0;
+  const stepsSource = fitnessDaily?.steps !== null && fitnessDaily?.steps !== undefined
+    ? "imported"
+    : steps > 0
+      ? "manual"
+      : "none";
+  const intensity = (activeCaloriesKcal ?? 0) >= 350 || workoutMinutes >= 50 || (effectiveSteps ?? 0) >= 10000
     ? "high"
-    : caloriesBurned >= 150 || workoutMinutes >= 20 || effectiveSteps >= 5000
+    : (activeCaloriesKcal ?? 0) >= 150 || workoutMinutes >= 20 || (effectiveSteps ?? 0) >= 5000
       ? "moderate"
       : "light";
-  return { caloriesBurned, workoutMinutes, steps: effectiveSteps, intensity, allWorkouts };
+  return {
+    activeCaloriesKcal,
+    workoutMinutes,
+    steps: effectiveSteps,
+    stepsAvailable: reportedSteps !== null,
+    stepsSource,
+    intensity,
+    allWorkouts,
+  };
+}
+
+function recommendationWorkoutType(activityType) {
+  const type = activityType.toLowerCase();
+  if (/(strength|weight|resistance)/.test(type)) return "strength";
+  if (/(run|walk|cycl|cardio|hike)/.test(type)) return "cardio";
+  return "recovery";
 }
 
 function getMealSuggestions({ diets, allergies, activity, workouts }) {
@@ -276,8 +303,10 @@ function getMealSuggestions({ diets, allergies, activity, workouts }) {
         ? "Support your movement today"
         : "A balanced meal for today",
     subtitle: latestWorkout
-      ? `Based on your ${latestWorkout.label.toLowerCase()} session and ${activity.steps.toLocaleString()} steps.`
-      : `Based on ${activity.steps.toLocaleString()} steps and your ${preference || ""}profile preferences.`,
+      ? `Based on your ${latestWorkout.label.toLowerCase()} session${activity.stepsAvailable ? ` and ${activity.steps.toLocaleString()} steps` : ""}.`
+      : activity.stepsAvailable
+        ? `Based on ${activity.steps.toLocaleString()} steps and your ${preference || ""}profile preferences.`
+        : `Based on your ${preference || ""}profile preferences; no synced step count is available.`,
     meals: sorted.slice(0, 3),
   };
 }
@@ -389,6 +418,7 @@ export default function Dashboard({
   userData,
   setUserData,
   onEditStep,
+  userId,
   onSignOut,
   accountEmail,
   profileSaveStatus,
@@ -397,16 +427,13 @@ export default function Dashboard({
   onRetryProfileSave,
 }) {
   const nutrition = useMemo(() => calculateNutrition(userData), [userData]);
-  const [dashboardData, setDashboardData] = useState(readDashboardState);
+  const [dashboardData, setDashboardData] = useState(() => readDashboardState(userId));
   const [view, setView] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [notice, setNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [googleFitStatus, setGoogleFitStatus] = useState(import.meta.env.VITE_GOOGLE_FIT_CLIENT_ID ? "ready" : "unconfigured");
-  const [googleFitError, setGoogleFitError] = useState("");
-  const [googleFitLoading, setGoogleFitLoading] = useState(false);
-  const googleAccessToken = useRef("");
-  const { meals, waterGlasses, weightEntries, workouts, steps, fitMetrics } = dashboardData;
+  const fitness = useFitnessIntegration(userId);
+  const { meals, waterGlasses, weightEntries, workouts, steps } = dashboardData;
   const calorieGoal = nutrition.calories;
   const consumed = getMealCalories(meals);
   const caloriesLeft = Math.max(calorieGoal - consumed, 0);
@@ -422,7 +449,7 @@ export default function Dashboard({
   const displayName = firstName(userData);
   const diets = (Array.isArray(userData?.diets) ? userData.diets : []).filter(Boolean);
   const allergies = [...(userData?.allergies || []), ...(userData?.customAllergies || [])].filter(Boolean);
-  const activity = getActivitySummary(workouts, steps, fitMetrics);
+  const activity = getActivitySummary(workouts, steps, fitness.daily, fitness.workouts);
   const suggestions = getMealSuggestions({ diets, allergies, activity, workouts });
   const targetWeight = Number(userData?.targetWeight) || 0;
   const currentWeight = Number(userData?.weight) || 0;
@@ -432,24 +459,8 @@ export default function Dashboard({
   const fatGoal = nutrition.fat;
 
   useEffect(() => {
-    localStorage.setItem("vitalsDashboard", JSON.stringify(dashboardData));
-  }, [dashboardData]);
-
-  useEffect(() => {
-    if (!import.meta.env.VITE_GOOGLE_FIT_CLIENT_ID) return undefined;
-    if (window.google?.accounts?.oauth2) return undefined;
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setGoogleFitStatus("ready");
-    script.onerror = () => {
-      setGoogleFitStatus("error");
-      setGoogleFitError("Google sign-in could not load. Check your connection and try again.");
-    };
-    document.head.appendChild(script);
-    return () => script.remove();
-  }, []);
+    localStorage.setItem(`vitalsDashboard:${userId}`, JSON.stringify(dashboardData));
+  }, [dashboardData, userId]);
 
   function selectView(id) {
     setView(id);
@@ -499,61 +510,6 @@ export default function Dashboard({
 
   function addWater() {
     setDashboardData((previous) => ({ ...previous, date: getTodayKey(), waterGlasses: Math.min(previous.waterGlasses + 1, 10) }));
-  }
-
-  function connectGoogleFit() {
-    const clientId = import.meta.env.VITE_GOOGLE_FIT_CLIENT_ID;
-    if (!clientId) {
-      setGoogleFitStatus("unconfigured");
-      setGoogleFitError("Add VITE_GOOGLE_FIT_CLIENT_ID to your local .env file and authorize this app's web origin in Google Cloud.");
-      return;
-    }
-    if (!window.google?.accounts?.oauth2) {
-      setGoogleFitError("Google sign-in is still loading. Try again in a moment.");
-      return;
-    }
-    setGoogleFitError("");
-    setGoogleFitLoading(true);
-    const tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: "https://www.googleapis.com/auth/fitness.activity.read",
-      callback: async (response) => {
-        if (response.error || !response.access_token) {
-          setGoogleFitLoading(false);
-          setGoogleFitStatus("error");
-          setGoogleFitError(response.error_description || response.error || "Google Fit access was not granted.");
-          return;
-        }
-        googleAccessToken.current = response.access_token;
-        try {
-          const metrics = await fetchGoogleFitActivity(response.access_token);
-          setDashboardData((previous) => ({ ...previous, date: getTodayKey(), fitMetrics: metrics }));
-          setGoogleFitStatus("connected");
-          setGoogleFitError("");
-        } catch (error) {
-          setGoogleFitStatus("error");
-          setGoogleFitError(error.message);
-        } finally {
-          setGoogleFitLoading(false);
-        }
-      },
-      error_callback: (error) => {
-        setGoogleFitLoading(false);
-        setGoogleFitStatus("error");
-        setGoogleFitError(error.message || "Google sign-in could not be completed.");
-      },
-    });
-    tokenClient.requestAccessToken();
-  }
-
-  function disconnectGoogleFit() {
-    if (googleAccessToken.current && window.google?.accounts?.oauth2) {
-      window.google.accounts.oauth2.revoke(googleAccessToken.current, () => {});
-    }
-    googleAccessToken.current = "";
-    setDashboardData((previous) => ({ ...previous, fitMetrics: null }));
-    setGoogleFitStatus(import.meta.env.VITE_GOOGLE_FIT_CLIENT_ID ? "ready" : "unconfigured");
-    setGoogleFitError("");
   }
 
   const navControls = (className) => (
@@ -680,12 +636,7 @@ export default function Dashboard({
         {view === "activity" && (
           <ActivityPage
             activity={activity}
-            connectGoogleFit={connectGoogleFit}
-            disconnectGoogleFit={disconnectGoogleFit}
-            fitError={googleFitError}
-            fitMetrics={fitMetrics}
-            fitStatus={googleFitStatus}
-            isLoading={googleFitLoading}
+            fitness={fitness}
             onLogWorkout={() => setModal("workout")}
             workouts={activity.allWorkouts}
           />
@@ -770,7 +721,7 @@ function DashboardHome({
       </section>
       <section aria-labelledby="meal-log-title" className="dashboard-meal-section">
         <div className="dashboard-section-heading">
-          <div><p className="dashboard-eyebrow">{meals.length} meals logged · {activity.steps.toLocaleString()} steps</p><h2 id="meal-log-title">Today&apos;s Meal Log</h2></div>
+          <div><p className="dashboard-eyebrow">{meals.length} meals logged · {activity.stepsAvailable ? `${activity.stepsSource === "manual" ? "manual " : ""}${activity.steps.toLocaleString()} steps` : "no step data"}</p><h2 id="meal-log-title">Today&apos;s Meal Log</h2></div>
           <span className="dashboard-meal-summary">{getMealCalories(meals).toLocaleString()} kcal eaten</span>
         </div>
         {meals.length ? (
@@ -795,7 +746,7 @@ function DashboardHome({
             <h2 id="suggestions-title">{suggestions.title}</h2>
             <p className="dashboard-section-subtitle">{suggestions.subtitle}</p>
           </div>
-          <span className="dashboard-activity-pill"><Flame size={15} /> {activity.caloriesBurned} active kcal</span>
+          <span className="dashboard-activity-pill"><Flame size={15} /> {activity.activeCaloriesKcal === null ? "--" : activity.activeCaloriesKcal} active kcal</span>
         </div>
         {suggestions.meals.length ? (
           <div className="dashboard-suggestion-grid">
@@ -907,45 +858,99 @@ function RecipesPage({ allergies, diets, onAddMeal }) {
   );
 }
 
-function ActivityPage({ activity, connectGoogleFit, disconnectGoogleFit, fitError, fitMetrics, fitStatus, isLoading, onLogWorkout, workouts }) {
-  const statusLabel = fitStatus === "connected" ? "Connected" : fitStatus === "ready" ? "Ready to connect" : fitStatus === "error" ? "Connection issue" : "Not configured";
+function ActivityPage({ activity, fitness, onLogWorkout, workouts }) {
+  const { connectionStatus, syncStatus, error, providerAvailable, daily, integration, lastSyncedAt } = fitness;
+  const statusLabel = fitness.loading
+    ? "Checking connection"
+    : syncStatus === "denied"
+      ? "Permission denied"
+      : connectionStatus === "connected"
+      ? "Connected"
+      : connectionStatus === "expired"
+        ? "Connection expired"
+        : providerAvailable
+          ? "Not connected"
+          : "Setup required";
+  const statusClass = connectionStatus === "connected" ? "connected" : connectionStatus === "expired" || syncStatus === "failed" || syncStatus === "denied" ? "error" : "";
+  const syncLabel = {
+    connecting: "Requesting permissions…",
+    syncing: "Synchronizing…",
+    success: "Sync successful",
+    empty: "No data available",
+    denied: "Permission denied",
+    failed: "Synchronization failed",
+  }[syncStatus];
+  const displayMetric = (value, suffix = "") => value === null || value === undefined ? "--" : `${value.toLocaleString()}${suffix}`;
+  const canDisconnect = providerAvailable && connectionStatus === "connected";
+  const canSync = providerAvailable && !fitness.loading && !["connecting", "syncing", "disconnecting"].includes(syncStatus);
+
   return (
     <>
-      <PageHeader action={<button className="dashboard-primary-button" onClick={onLogWorkout} type="button"><Plus size={17} /> Log activity</button>} description="Your activity updates meal recommendations for the day. Connect Google Fit or record a workout below." eyebrow="Movement & recovery" title="Activity" />
+      <PageHeader action={<button className="dashboard-primary-button" onClick={onLogWorkout} type="button"><Plus size={17} /> Log activity</button>} description="Imported activity and your manual logs can inform today's meal suggestions. Provider data is shown only when the connected source supplies it." eyebrow="Movement & recovery" title="Activity" />
       <div className="dashboard-stat-strip">
-        <StatCard label="Steps today" value={activity.steps.toLocaleString()} />
-        <StatCard label="Workout time" value={`${activity.workoutMinutes} min`} />
-        <StatCard label="Workout energy logged" value={`${activity.caloriesBurned} kcal`} />
+        <StatCard label={activity.stepsSource === "imported" ? "Imported steps today" : activity.stepsSource === "manual" ? "Manual steps today" : "Steps today"} value={activity.stepsAvailable ? activity.steps.toLocaleString() : "--"} />
+        <StatCard label="Active calories (imported)" value={displayMetric(daily?.activeCaloriesKcal, " kcal")} />
+        <StatCard label="Workout duration" value={daily?.workoutDurationMinutes !== null && daily?.workoutDurationMinutes !== undefined ? `${daily.workoutDurationMinutes} min` : "--"} />
       </div>
       <section className="dashboard-data-section">
-        <SectionHeading eyebrow="Activity sync" title="Google Fit" />
+        <SectionHeading eyebrow="Fitness provider" title="Google Health API" />
         <article className="dashboard-fit-card">
           <div className="dashboard-fit-icon"><Activity size={24} /></div>
           <div className="dashboard-fit-content">
-            <div className="dashboard-fit-title-row"><h3>Google Fit activity data</h3><span className={`dashboard-fit-status ${fitStatus}`}>{statusLabel}</span></div>
-            <p>With your permission, sync today&apos;s step count, distance, calories expended, and exercise sessions. Access is read-only and the access token stays in this browser session.</p>
-            {fitMetrics && <p className="dashboard-fit-last-sync">Last synced: {new Date(fitMetrics.syncedAt).toLocaleTimeString()} · {fitMetrics.steps.toLocaleString()} steps · {(fitMetrics.distanceMeters / 1000).toFixed(1)} km · {fitMetrics.calories} kcal expended · {fitMetrics.sessions.length} sessions</p>}
-            {fitError && <p aria-live="polite" className="dashboard-fit-error">{fitError}</p>}
+            <div className="dashboard-fit-title-row"><h3>Google Health</h3><span className={`dashboard-fit-status ${statusClass}`}>{statusLabel}</span></div>
+            <p>With your consent, read-only activity access can include steps, active energy burned, exercise sessions, and distance from data available to your Google Health account. Active calories are not total daily energy expenditure.</p>
+            {!providerAvailable && <p className="dashboard-fit-last-sync">Google Health server configuration is not available yet. Complete the Firebase Functions and Google OAuth setup before connecting. No provider connection is simulated.</p>}
+            {providerAvailable && connectionStatus !== "connected" && <p className="dashboard-fit-last-sync">Google will ask you to authorize the activity-and-fitness read-only scope. The first sync imports the last 7 days; later syncs are user initiated.</p>}
+            {connectionStatus === "connected" && (
+              <>
+                <p className="dashboard-fit-last-sync">
+                  {lastSyncedAt ? `Last synchronized ${lastSyncedAt.toLocaleString()}` : "Connected; no successful sync recorded yet."}
+                  {integration?.permissions?.length ? ` · Permissions: ${integration.permissions.join(", ")}` : ""}
+                </p>
+                <p className="dashboard-fit-last-sync">
+                  Today: {displayMetric(daily?.steps, " steps")} · {displayMetric(daily?.activeCaloriesKcal, " active kcal")} · {daily?.distanceMeters == null ? "--" : `${(daily.distanceMeters / 1000).toFixed(2)} km`} · {displayMetric(daily?.averageHeartRateBpm, " bpm")} average heart rate
+                </p>
+              </>
+            )}
+            {syncLabel && <p aria-live="polite" className="dashboard-fit-last-sync">{syncLabel}</p>}
+            {error && <p aria-live="polite" className="dashboard-fit-error">{error}</p>}
           </div>
-          {fitStatus === "connected"
-            ? <div className="dashboard-fit-actions"><button className="dashboard-primary-button" disabled={isLoading} onClick={connectGoogleFit} type="button">{isLoading ? "Syncing…" : "Sync now"}</button><button className="dashboard-secondary-button" onClick={disconnectGoogleFit} type="button">Disconnect</button></div>
-            : <button className="dashboard-primary-button" disabled={isLoading} onClick={connectGoogleFit} type="button">{isLoading ? "Connecting…" : "Connect Google Fit"}</button>}
+          <div className="dashboard-fit-actions">
+            {connectionStatus === "connected"
+              ? <>
+                  <button className="dashboard-primary-button" disabled={!canSync} onClick={fitness.sync} type="button">
+                    {syncStatus === "syncing" ? "Syncing…" : syncStatus === "connecting" ? "Requesting…" : "Sync now"}
+                  </button>
+                  <button className="dashboard-secondary-button" disabled={!canDisconnect} onClick={fitness.disconnect} type="button">Disconnect</button>
+                </>
+              : <button className="dashboard-primary-button" disabled={!providerAvailable || fitness.loading || syncStatus === "connecting"} onClick={fitness.connect} type="button">
+                  {syncStatus === "connecting" ? "Opening Google consent…" : providerAvailable ? "Connect & sync" : "Setup required"}
+                </button>}
+            {["failed", "denied", "empty"].includes(syncStatus) && providerAvailable && (
+              <button className="dashboard-secondary-button" disabled={!canSync} onClick={fitness.sync} type="button">Try again</button>
+            )}
+          </div>
         </article>
+        <div className="dashboard-stat-strip">
+          <StatCard label="Imported distance" value={daily?.distanceMeters == null ? "--" : `${(daily.distanceMeters / 1000).toFixed(2)} km`} />
+          <StatCard label="Average heart rate" value={displayMetric(daily?.averageHeartRateBpm, " bpm")} />
+          <StatCard label="Provider workouts today" value={fitness.workouts.length.toLocaleString()} />
+        </div>
       </section>
       <section className="dashboard-data-section">
         <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">Today&apos;s exercise</p><h2>Activity sessions</h2></div><button className="dashboard-secondary-button" onClick={onLogWorkout} type="button"><Plus size={16} /> Log activity</button></div>
-        <p className="dashboard-section-subtitle">Connect Google Fit or record a session manually. Activity and steps help determine today&apos;s meal suggestions.</p>
+        <p className="dashboard-section-subtitle">Imported sessions are read from Google Health; manually logged sessions are marked separately. Missing provider measurements remain unavailable.</p>
         {workouts.length ? (
           <div className="dashboard-workout-list">
             {[...workouts].reverse().map((workout) => (
               <article className="dashboard-workout-row" key={workout.id}>
                 <span className="dashboard-info-icon"><Dumbbell size={18} /></span>
-                <div><strong>{workout.label}</strong><p>{workout.minutes} min · {workout.steps ? `${workout.steps.toLocaleString()} steps · ` : ""}{workout.calories} kcal</p></div>
-                <time>{new Date(workout.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time>
+                <div><strong>{workout.label}</strong><p>{workout.minutes ?? "--"} min · {workout.steps ? `${workout.steps.toLocaleString()} steps · ` : ""}{workout.calories == null ? "--" : `${workout.calories} kcal`}{workout.averageHeartRateBpm == null ? "" : ` · avg ${workout.averageHeartRateBpm} bpm`}{workout.provider ? " · imported" : " · manual estimate"}</p></div>
+                <time>{Number.isFinite(workout.time) ? new Date(workout.time).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "--"}</time>
               </article>
             ))}
           </div>
-        ) : <EmptyState text="No workouts logged today. Log a session to get recovery-focused meal suggestions." action={onLogWorkout} actionLabel="Log a workout" />}
+        ) : <EmptyState text="No imported or manually logged workouts are available for today." action={onLogWorkout} actionLabel="Log a workout" />}
       </section>
     </>
   );
@@ -958,7 +963,7 @@ function ProgressPage({ currentWeight, onLogWeight, targetWeight, userData, weig
       <div className="dashboard-stat-strip">
         <StatCard label="Current weight" value={currentWeight ? `${currentWeight} kg` : "Not set"} />
         <StatCard label="Target weight" value={targetWeight ? `${targetWeight} kg` : "Not set"} />
-        <StatCard label="Steps today" value={activity.steps.toLocaleString()} />
+        <StatCard label="Steps today" value={activity.stepsAvailable ? activity.steps.toLocaleString() : "--"} />
       </div>
       <section className="dashboard-data-section">
         <SectionHeading eyebrow="Starting profile" title="Your baseline" />
@@ -969,7 +974,7 @@ function ProgressPage({ currentWeight, onLogWeight, targetWeight, userData, weig
           </article>
           <article className="dashboard-info-card">
             <div className="dashboard-info-card-heading"><span className="dashboard-info-icon"><Flame size={18} /></span><div><h3>Activity today</h3><p>From workouts and connected data</p></div></div>
-            <div className="dashboard-profile-facts"><span>{activity.steps.toLocaleString()} steps</span><span>{activity.workoutMinutes} workout minutes</span><span>{activity.caloriesBurned} active kcal</span></div>
+            <div className="dashboard-profile-facts"><span>{activity.stepsAvailable ? `${activity.steps.toLocaleString()} steps` : "-- steps"}</span><span>{activity.workoutMinutes} workout minutes</span><span>{activity.activeCaloriesKcal === null ? "-- active kcal" : `${activity.activeCaloriesKcal} active kcal`}</span></div>
           </article>
         </div>
       </section>
@@ -1013,80 +1018,4 @@ function NutrientProgress({ label, current, target, color }) {
       </div>
     </div>
   );
-}
-
-async function fetchGoogleFitActivity(accessToken) {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const headers = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
-  const [aggregateResponse, sessionsResponse] = await Promise.all([
-    fetch("https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        aggregateBy: [
-          { dataTypeName: "com.google.step_count.delta" },
-          { dataTypeName: "com.google.calories.expended" },
-          { dataTypeName: "com.google.distance.delta" },
-        ],
-        bucketByTime: { durationMillis: Math.max(now.getTime() - startOfDay, 1) },
-        startTimeMillis: startOfDay,
-        endTimeMillis: now.getTime(),
-      }),
-    }),
-    fetch(
-      `https://www.googleapis.com/fitness/v1/users/me/sessions?startTime=${encodeURIComponent(new Date(startOfDay).toISOString())}&endTime=${encodeURIComponent(now.toISOString())}`,
-      { headers }
-    ),
-  ]);
-  if (!aggregateResponse.ok) {
-    const responseBody = await aggregateResponse.json().catch(() => ({}));
-    throw new Error(responseBody.error?.message || `Google Fit activity request failed (${aggregateResponse.status}).`);
-  }
-  if (!sessionsResponse.ok) {
-    const responseBody = await sessionsResponse.json().catch(() => ({}));
-    throw new Error(responseBody.error?.message || `Google Fit workout request failed (${sessionsResponse.status}).`);
-  }
-  const result = await aggregateResponse.json();
-  const sessionsResult = await sessionsResponse.json();
-  const metrics = { steps: 0, calories: 0, distanceMeters: 0, syncedAt: Date.now() };
-  for (const bucket of result.bucket || []) {
-    for (const dataset of bucket.dataset || []) {
-      for (const point of dataset.point || []) {
-        const value = point.value?.[0];
-        const amount = Number(value?.intVal ?? value?.fpVal ?? 0);
-        if (dataset.dataSourceId?.includes("step_count")) metrics.steps += amount;
-        if (dataset.dataSourceId?.includes("calories")) metrics.calories += amount;
-        if (dataset.dataSourceId?.includes("distance")) metrics.distanceMeters += amount;
-      }
-    }
-  }
-  return {
-    steps: Math.round(metrics.steps),
-    calories: Math.round(metrics.calories),
-    distanceMeters: Math.round(metrics.distanceMeters),
-    syncedAt: metrics.syncedAt,
-    sessions: (sessionsResult.session || [])
-      .map((session) => {
-        const start = Date.parse(session.startTime);
-        const end = Date.parse(session.endTime);
-        const minutes = Math.max(Math.round((end - start) / 60000), 0);
-        const activityType = Number(session.activityType);
-        const type = /strength|weight/i.test(session.name || "") || activityType === 80
-          ? "strength"
-          : /run|walk|cycl|cardio/i.test(session.name || "") || [1, 7, 8].includes(activityType)
-            ? "cardio"
-            : "recovery";
-        return {
-          id: `google-fit-${session.id}`,
-          label: session.name || "Google Fit activity",
-          type,
-          minutes,
-          calories: 0,
-          steps: 0,
-          time: Number.isFinite(end) ? end : Date.now(),
-        };
-      })
-      .filter((session) => session.minutes > 0),
-  };
 }
