@@ -92,6 +92,162 @@ service cloud.firestore {
       match /privateIntegrations/{integrationId} {
         allow read, write: if false;
       }
+
+      match /nutritionPlans/{date} {
+        function validNutritionPlan(data) {
+          return data.keys().hasAll([
+              'date', 'calorieTarget', 'proteinTarget', 'carbohydrateTarget',
+              'fatTarget', 'bmr', 'tdee', 'goal', 'calorieSource', 'generatedAt'
+            ])
+            && data.keys().hasOnly([
+              'date', 'calorieTarget', 'proteinTarget', 'carbohydrateTarget',
+              'fatTarget', 'bmr', 'tdee', 'goal', 'calorieSource', 'generatedAt'
+            ])
+            && data.date == date
+            && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+            && data.calorieTarget is number
+            && data.calorieTarget >= 100
+            && data.calorieTarget <= 10000
+            && data.proteinTarget is number
+            && data.proteinTarget > 0
+            && data.proteinTarget <= 1000
+            && data.carbohydrateTarget is number
+            && data.carbohydrateTarget >= 0
+            && data.carbohydrateTarget <= 2500
+            && data.fatTarget is number
+            && data.fatTarget > 0
+            && data.fatTarget <= 500
+            && data.bmr is number
+            && data.bmr > 0
+            && data.bmr <= 6000
+            && data.tdee is number
+            && data.tdee > 0
+            && data.tdee <= 10000
+            && data.goal in ['Weight Loss', 'Muscle Gain', 'Maintenance']
+            && data.calorieSource == 'estimated'
+            && data.generatedAt is timestamp;
+        }
+
+        allow get, list: if signedInAs(userId);
+        allow create: if signedInAs(userId)
+          && validNutritionPlan(request.resource.data)
+          && request.resource.data.generatedAt == request.time;
+        allow update: if signedInAs(userId)
+          && validNutritionPlan(request.resource.data)
+          && request.resource.data.generatedAt == request.time;
+        allow delete: if false;
+      }
+
+      match /dashboardDays/{date} {
+        function validDashboardDay(data) {
+          return data.keys().hasAll(['date', 'waterGlasses', 'steps', 'updatedAt'])
+            && data.keys().hasOnly(['date', 'waterGlasses', 'steps', 'updatedAt'])
+            && data.date == date
+            && data.date.matches('^\\d{4}-\\d{2}-\\d{2}$')
+            && data.waterGlasses is int
+            && data.waterGlasses >= 0
+            && data.waterGlasses <= 10
+            && data.steps is int
+            && data.steps >= 0
+            && data.steps <= 10000000
+            && data.updatedAt is timestamp
+            && data.updatedAt == request.time;
+        }
+
+        allow get, list: if signedInAs(userId);
+        allow create, update: if signedInAs(userId)
+          && validDashboardDay(request.resource.data);
+        allow delete: if false;
+
+        match /meals/{mealId} {
+          function validMeal(data) {
+            return data.keys().hasAll([
+                'id', 'uid', 'date', 'name', 'calories', 'protein', 'carbs',
+                'fat', 'suggested', 'loggedAt'
+              ])
+              && data.keys().hasOnly([
+                'id', 'uid', 'date', 'name', 'calories', 'protein', 'carbs',
+                'fat', 'suggested', 'loggedAt'
+              ])
+              && data.id == mealId
+              && data.uid == userId
+              && data.date == date
+              && data.name is string
+              && data.name.size() > 0
+              && data.name.size() <= 120
+              && data.calories is number
+              && data.calories >= 0
+              && data.calories <= 20000
+              && (data.protein == null || (data.protein is number && data.protein >= 0 && data.protein <= 2000))
+              && (data.carbs == null || (data.carbs is number && data.carbs >= 0 && data.carbs <= 2000))
+              && (data.fat == null || (data.fat is number && data.fat >= 0 && data.fat <= 2000))
+              && data.suggested is bool
+              && data.loggedAt is number
+              && data.loggedAt >= 0
+              && data.loggedAt <= request.time.toMillis() + 60000;
+          }
+
+          allow get, list: if signedInAs(userId);
+          allow create, update: if signedInAs(userId)
+            && validMeal(request.resource.data);
+          allow delete: if false;
+        }
+
+        match /manualWorkouts/{workoutId} {
+          function validManualWorkout(data) {
+            return data.keys().hasAll([
+                'id', 'uid', 'date', 'type', 'label', 'minutes', 'calories',
+                'steps', 'loggedAt'
+              ])
+              && data.keys().hasOnly([
+                'id', 'uid', 'date', 'type', 'label', 'minutes', 'calories',
+                'steps', 'loggedAt'
+              ])
+              && data.id == workoutId
+              && data.uid == userId
+              && data.date == date
+              && data.type is string
+              && data.type.size() <= 40
+              && data.label is string
+              && data.label.size() <= 100
+              && data.minutes is number
+              && data.minutes > 0
+              && data.minutes <= 1440
+              && (data.calories == null || (data.calories is number && data.calories >= 0 && data.calories <= 20000))
+              && data.steps is int
+              && data.steps >= 0
+              && data.steps <= 100000
+              && data.loggedAt is number
+              && data.loggedAt >= 0
+              && data.loggedAt <= request.time.toMillis() + 60000;
+          }
+
+          allow get, list: if signedInAs(userId);
+          allow create, update: if signedInAs(userId)
+            && validManualWorkout(request.resource.data);
+          allow delete: if false;
+        }
+      }
+
+      match /weightEntries/{entryId} {
+        function validWeightEntry(data) {
+          return data.keys().hasAll(['id', 'uid', 'weight', 'loggedAt'])
+            && data.keys().hasOnly(['id', 'uid', 'weight', 'loggedAt'])
+            && data.id == entryId
+            && data.uid == userId
+            && data.weight is number
+            && data.weight >= 1
+            && data.weight <= 500
+            && data.loggedAt is number
+            && data.loggedAt >= 0
+            && data.loggedAt <= request.time.toMillis() + 60000;
+        }
+
+        allow get, list: if signedInAs(userId);
+        allow create, update: if signedInAs(userId)
+          && validWeightEntry(request.resource.data);
+        allow delete: if false;
+      }
     }
   }
 }

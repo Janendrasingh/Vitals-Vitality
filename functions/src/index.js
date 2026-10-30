@@ -8,6 +8,7 @@ import {
   readGoogleHealthActivity,
   refreshGoogleHealthAccessToken,
   revokeGoogleHealthToken,
+  verifyGoogleHealthIdentity,
 } from "./googleHealthClient.js";
 import {
   googleHealthPermissions,
@@ -31,17 +32,24 @@ export const googleHealthApi = onRequest({
   secrets: [clientSecret, encryptionKey],
 }, async (req, res) => {
   const configuredOrigin = normalizeOrigin(appOrigin.value());
-  const requestOrigin = req.get("origin");
-  const requestedPath = req.path.replace(/\/+$/, "") || "/";
-  const path = ["/callback", "/start", "/sync", "/disconnect"]
-    .find((route) => requestedPath.endsWith(route)) || "/";
-  const isOAuthCallback = path === "/callback" && req.method === "GET";
-  if (requestOrigin && requestOrigin !== configuredOrigin && !isOAuthCallback) {
-    res.status(403).json({ error: "This application origin is not allowed." });
-    return;
-  }
 
-  if (requestOrigin === configuredOrigin) {
+const allowedOrigins = new Set([
+  configuredOrigin,
+  "http://localhost:5173",
+]);
+
+const requestOrigin = req.get("origin");
+const requestedPath = req.path.replace(/\/+$/, "") || "/";
+const path = ["/callback", "/start", "/sync", "/disconnect"]
+  .find((route) => requestedPath.endsWith(route)) || "/";
+const isOAuthCallback = path === "/callback" && req.method === "GET";
+
+if (requestOrigin && !allowedOrigins.has(requestOrigin) && !isOAuthCallback) {
+  res.status(403).json({ error: "This application origin is not allowed." });
+  return;
+}
+
+if (requestOrigin && allowedOrigins.has(requestOrigin)) {
     res.set("Access-Control-Allow-Origin", configuredOrigin);
     res.set("Vary", "Origin");
     res.set("Access-Control-Allow-Headers", "Authorization, Content-Type");
@@ -165,10 +173,18 @@ async function handleOAuthCallback(req, res, origin) {
       clientSecret: clientSecret.value(),
       redirectUri: callbackUrl(),
     });
+    if (typeof tokens.access_token !== "string" || !tokens.access_token) {
+      throw Object.assign(new Error("Google did not issue an access token."), {
+        code: "authorization-failed",
+      });
+    }
     if (typeof tokens.refresh_token !== "string" || !tokens.refresh_token) {
-      throw new Error("Google did not issue offline access.");
+      throw Object.assign(new Error("Google did not issue offline access."), {
+        code: "authorization-failed",
+      });
     }
 
+    await verifyGoogleHealthIdentity({ accessToken: tokens.access_token });
     const encryptedToken = encryptRefreshToken(tokens.refresh_token);
     const userRef = firestore.doc(`users/${stateData.uid}`);
     const privateRef = userRef.collection("privateIntegrations").doc(googleHealthProviderId);
@@ -195,7 +211,12 @@ async function handleOAuthCallback(req, res, origin) {
     console.error("Google Health authorization callback failed", {
       code: typeof error?.code === "string" ? error.code : "authorization-failed",
     });
-    res.redirect(303, redirectToApp(stateData.returnOrigin || origin, "failed"));
+    const redirectState = error?.code === "account-not-linked"
+      ? "not-linked"
+      : error?.code === "identity-permission-denied"
+        ? "permission-denied"
+        : "failed";
+    res.redirect(303, redirectToApp(stateData.returnOrigin || origin, redirectState));
   }
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Bell,
@@ -19,8 +19,21 @@ import {
   Weight,
   X,
 } from "lucide-react";
-import { calculateNutrition } from "../components/step4/nutritionCalculator";
+import { loadNutritionPlan, saveNutritionPlan } from "../firebase/nutritionPlans";
+import {
+  addManualSteps,
+  addWaterGlass,
+  createDashboardEntryId,
+  migrateLegacyDashboard,
+  saveDashboardMeal,
+  saveDashboardWorkout,
+  saveWeightEntry,
+  subscribeDashboard,
+} from "../firebase/dashboardRepository";
 import { useFitnessIntegration } from "../fitness/useFitnessIntegration";
+import { calculateNutritionTargets } from "../nutrition/nutritionCalculator";
+import { mealCatalog } from "../nutrition/mealCatalog";
+import { recommendMeals } from "../nutrition/mealRecommendations";
 import "./Dashboard.css";
 
 const navigation = [
@@ -38,105 +51,6 @@ const setupNavigation = [
   { label: "Nutrition summary", step: 4 },
 ];
 
-const mealLibrary = [
-  {
-    id: "chicken-rice",
-    name: "Chicken & brown rice bowl",
-    description: "Grilled chicken, brown rice, spinach and roasted peppers",
-    calories: 540,
-    protein: 42,
-    carbs: 58,
-    fat: 14,
-    tags: ["omnivore", "gluten-free"],
-    allergens: [],
-    workout: "strength",
-  },
-  {
-    id: "tofu-quinoa",
-    name: "Tofu quinoa power bowl",
-    description: "Crispy tofu, quinoa, edamame and greens",
-    calories: 510,
-    protein: 28,
-    carbs: 62,
-    fat: 17,
-    tags: ["vegan", "vegetarian", "gluten-free"],
-    allergens: ["soy"],
-    workout: "strength",
-  },
-  {
-    id: "salmon-potato",
-    name: "Salmon & sweet potato",
-    description: "Baked salmon, sweet potato and broccoli",
-    calories: 590,
-    protein: 38,
-    carbs: 54,
-    fat: 23,
-    tags: ["omnivore", "gluten-free", "paleo"],
-    allergens: ["fish"],
-    workout: "cardio",
-  },
-  {
-    id: "lentil-wrap",
-    name: "Lentil & avocado wrap",
-    description: "Lentils, avocado, crunchy greens in a gluten-free wrap",
-    calories: 470,
-    protein: 20,
-    carbs: 56,
-    fat: 18,
-    tags: ["vegan", "vegetarian", "gluten-free"],
-    allergens: [],
-    workout: "cardio",
-  },
-  {
-    id: "egg-salad",
-    name: "Egg & avocado salad",
-    description: "Eggs, avocado, cucumber and leafy greens",
-    calories: 390,
-    protein: 24,
-    carbs: 16,
-    fat: 27,
-    tags: ["vegetarian", "keto", "gluten-free", "paleo"],
-    allergens: ["egg"],
-    workout: "recovery",
-  },
-  {
-    id: "chickpea-salad",
-    name: "Chickpea crunch salad",
-    description: "Chickpeas, cucumber, tomato and lemon-herb dressing",
-    calories: 430,
-    protein: 18,
-    carbs: 57,
-    fat: 15,
-    tags: ["vegan", "vegetarian", "gluten-free"],
-    allergens: [],
-    workout: "recovery",
-  },
-  {
-    id: "turkey-lettuce",
-    name: "Turkey lettuce cups",
-    description: "Lean turkey, lettuce, cucumber and sesame-free herbs",
-    calories: 360,
-    protein: 35,
-    carbs: 12,
-    fat: 19,
-    tags: ["omnivore", "keto", "gluten-free", "paleo"],
-    allergens: [],
-    workout: "strength",
-  },
-  {
-    id: "oat-yogurt",
-    name: "Berry oat yogurt bowl",
-    description: "Oats, berries, yogurt and pumpkin seeds",
-    calories: 410,
-    protein: 22,
-    carbs: 52,
-    fat: 12,
-    tags: ["vegetarian"],
-    allergens: ["dairy", "gluten"],
-    workout: "cardio",
-  },
-];
-
 const workoutOptions = [
   { id: "strength", label: "Strength training", met: 5 },
   { id: "cardio", label: "Cardio / running", met: 8 },
@@ -147,7 +61,18 @@ const workoutOptions = [
 
 function getTodayKey() {
   const date = new Date();
-  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function getNutritionDateKey() {
+  return getTodayKey();
+}
+
+function normalizeDashboardDate(value) {
+  if (typeof value !== "string") return "";
+  const match = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return "";
+  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
 }
 
 function emptyDashboardState() {
@@ -166,7 +91,10 @@ function readDashboardState(userId) {
   if (!savedState) return emptyDashboardState();
 
   const parsedState = JSON.parse(savedState);
-  if (parsedState.date !== getTodayKey()) {
+  if (!parsedState || typeof parsedState !== "object" || Array.isArray(parsedState)) {
+    throw new Error("Saved dashboard records could not be read.");
+  }
+  if (normalizeDashboardDate(parsedState.date) !== getTodayKey()) {
     return {
       ...emptyDashboardState(),
       weightEntries: Array.isArray(parsedState.weightEntries) ? parsedState.weightEntries : [],
@@ -179,6 +107,7 @@ function readDashboardState(userId) {
   return {
     ...emptyDashboardState(),
     ...savedDashboardData,
+    date: getTodayKey(),
     meals: Array.isArray(parsedState.meals) ? parsedState.meals : [],
     workouts: Array.isArray(parsedState.workouts) ? parsedState.workouts : [],
     weightEntries: Array.isArray(parsedState.weightEntries) ? parsedState.weightEntries : [],
@@ -191,38 +120,6 @@ function readDashboardState(userId) {
 
 function firstName(data) {
   return data?.fullName?.trim().split(/\s+/)[0] || "there";
-}
-
-function matchesAllergy(meal, allergies) {
-  const allergyAliases = {
-    dairy: ["dairy", "milk", "lactose"],
-    peanut: ["peanut"],
-    shellfish: ["shellfish", "shrimp", "crab", "lobster"],
-    soy: ["soy"],
-    egg: ["egg"],
-    fish: ["fish"],
-    gluten: ["gluten", "wheat"],
-    sesame: ["sesame"],
-    honey: ["honey"],
-  };
-  return allergies.some((item) => {
-    const allergy = item.toLowerCase().trim();
-    const matchedCategory = Object.entries(allergyAliases).find(([, aliases]) =>
-      aliases.some((alias) => allergy.includes(alias))
-    );
-    if (!matchedCategory) return true;
-    return meal.allergens.includes(matchedCategory[0]);
-  });
-}
-
-function getDietKeys(diets) {
-  return diets
-    .map((diet) => diet.toLowerCase())
-    .filter((diet) => ["vegan", "keto", "paleo", "gluten-free"].includes(diet));
-}
-
-function satisfiesDiets(meal, diets) {
-  return diets.every((diet) => meal.tags.includes(diet));
 }
 
 function getActivitySummary(workouts, steps, fitnessDaily, fitnessWorkouts) {
@@ -238,25 +135,32 @@ function getActivitySummary(workouts, steps, fitnessDaily, fitnessWorkouts) {
     time: workout.endTimeMs,
   }));
   const allWorkouts = [...workouts, ...importedWorkouts].sort((a, b) => a.time - b.time);
-  const manualWorkoutMinutes = workouts.reduce((total, workout) => total + workout.minutes, 0);
+  const manualWorkoutMinutes = workouts.length
+    ? workouts.reduce((total, workout) => total + workout.minutes, 0)
+    : null;
   const workoutMinutes = fitnessDaily?.workoutDurationMinutes ?? manualWorkoutMinutes;
   const activeCaloriesKcal = fitnessDaily?.activeCaloriesKcal ?? null;
   const reportedSteps = fitnessDaily?.steps ?? (steps > 0 ? steps : null);
-  const effectiveSteps = reportedSteps ?? 0;
   const stepsSource = fitnessDaily?.steps !== null && fitnessDaily?.steps !== undefined
     ? "imported"
     : steps > 0
       ? "manual"
       : "none";
-  const intensity = (activeCaloriesKcal ?? 0) >= 350 || workoutMinutes >= 50 || (effectiveSteps ?? 0) >= 10000
+  const hasActivityData = activeCaloriesKcal !== null
+    || workoutMinutes !== null
+    || reportedSteps !== null
+    || allWorkouts.length > 0;
+  const intensity = !hasActivityData
+    ? "unavailable"
+    : (activeCaloriesKcal ?? 0) >= 350 || (workoutMinutes ?? 0) >= 50 || (reportedSteps ?? 0) >= 10000
     ? "high"
-    : (activeCaloriesKcal ?? 0) >= 150 || workoutMinutes >= 20 || (effectiveSteps ?? 0) >= 5000
+    : (activeCaloriesKcal ?? 0) >= 150 || (workoutMinutes ?? 0) >= 20 || (reportedSteps ?? 0) >= 5000
       ? "moderate"
       : "light";
   return {
     activeCaloriesKcal,
     workoutMinutes,
-    steps: effectiveSteps,
+    steps: reportedSteps,
     stepsAvailable: reportedSteps !== null,
     stepsSource,
     intensity,
@@ -271,48 +175,44 @@ function recommendationWorkoutType(activityType) {
   return "recovery";
 }
 
-function getMealSuggestions({ diets, allergies, activity, workouts }) {
-  const dietKeys = getDietKeys(diets);
-  const latestWorkout = activity.allWorkouts.at(-1) || workouts.at(-1);
-  const workoutType = latestWorkout?.type === "strength"
-    ? "strength"
-    : latestWorkout && ["cardio", "cycling", "walking"].includes(latestWorkout.type)
-      ? "cardio"
-      : "recovery";
-  const preference = dietKeys.length ? `${dietKeys.join(", ")} ` : "";
-  const focus = activity.intensity === "high"
-    ? "high-activity"
-    : activity.intensity === "moderate"
-      ? "active-day"
-      : "balanced";
-  const eligible = mealLibrary.filter((meal) => {
-    if (!satisfiesDiets(meal, dietKeys)) return false;
-    if (matchesAllergy(meal, allergies)) return false;
-    return true;
-  });
-  const sorted = [...eligible].sort((a, b) => {
-    const aFit = a.workout === workoutType ? 1 : 0;
-    const bFit = b.workout === workoutType ? 1 : 0;
-    return bFit - aFit || b.protein - a.protein;
+function getMealSuggestions({ diets, allergies, activity, nutrition }) {
+  const latestWorkout = activity.allWorkouts.at(-1);
+  const result = recommendMeals({
+    source: mealCatalog,
+    calorieTarget: nutrition.calorieTarget,
+    proteinTarget: nutrition.proteinTarget,
+    carbohydrateTarget: nutrition.carbohydrateTarget,
+    fatTarget: nutrition.fatTarget,
+    diets,
+    allergies,
+    activity: {
+      intensity: activity.intensity,
+      latestWorkoutType: latestWorkout?.type,
+    },
   });
   return {
-    focus,
-    title: activity.intensity === "high"
-      ? "Refuel after your active day"
-      : activity.intensity === "moderate"
-        ? "Support your movement today"
-        : "A balanced meal for today",
+    ...result,
+    title: "Today’s meal recommendations",
     subtitle: latestWorkout
-      ? `Based on your ${latestWorkout.label.toLowerCase()} session${activity.stepsAvailable ? ` and ${activity.steps.toLocaleString()} steps` : ""}.`
+      ? `Activity context includes your ${latestWorkout.label.toLowerCase()} session. Activity calories are not added to your calorie target.`
       : activity.stepsAvailable
-        ? `Based on ${activity.steps.toLocaleString()} steps and your ${preference || ""}profile preferences.`
-        : `Based on your ${preference || ""}profile preferences; no synced step count is available.`,
-    meals: sorted.slice(0, 3),
+        ? `Activity context includes ${activity.steps.toLocaleString()} steps. Activity calories are not added to your calorie target.`
+        : "No fitness activity is available today; your estimated calorie target is based on your selected usual activity level.",
   };
 }
 
 function getMealCalories(meals) {
   return meals.reduce((total, meal) => total + (Number(meal.calories) || 0), 0);
+}
+
+function getLoggedMacroTotal(meals, field) {
+  if (!meals.length || meals.some((meal) =>
+    meal[field] === null || meal[field] === undefined || meal[field] === ""
+      || !Number.isFinite(Number(meal[field]))
+  )) {
+    return null;
+  }
+  return meals.reduce((total, meal) => total + Number(meal[field]), 0);
 }
 
 function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
@@ -338,9 +238,9 @@ function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
       onSubmit({
         name: values.name.trim(),
         calories: Number(values.calories),
-        protein: Number(values.protein) || 0,
-        carbs: Number(values.carbs) || 0,
-        fat: Number(values.fat) || 0,
+        protein: values.protein === "" ? null : Number(values.protein),
+        carbs: values.carbs === "" ? null : Number(values.carbs),
+        fat: values.fat === "" ? null : Number(values.fat),
       });
     } else if (isWeight) {
       onSubmit({ weight: Number(values.weight) });
@@ -426,41 +326,145 @@ export default function Dashboard({
   accountError,
   onRetryProfileSave,
 }) {
-  const nutrition = useMemo(() => calculateNutrition(userData), [userData]);
+  const nutrition = useMemo(() => calculateNutritionTargets(userData), [userData]);
   const [dashboardData, setDashboardData] = useState(() => readDashboardState(userId));
+  const [dashboardSyncState, setDashboardSyncState] = useState({
+    status: "loading",
+    error: "",
+  });
   const [view, setView] = useState("dashboard");
   const [modal, setModal] = useState(null);
   const [notice, setNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [planSaveState, setPlanSaveState] = useState({
+    planKey: null,
+    status: "loading",
+    error: "",
+  });
+  const nutritionPlanQueue = useRef(Promise.resolve());
   const fitness = useFitnessIntegration(userId);
   const { meals, waterGlasses, weightEntries, workouts, steps } = dashboardData;
-  const calorieGoal = nutrition.calories;
+  const calorieGoal = nutrition.calorieTarget;
   const consumed = getMealCalories(meals);
-  const caloriesLeft = Math.max(calorieGoal - consumed, 0);
+  const caloriesLeft = calorieGoal === null ? null : Math.max(calorieGoal - consumed, 0);
   const calorieProgress = calorieGoal ? Math.min((consumed / calorieGoal) * 100, 100) : 0;
-  const consumedMacros = meals.reduce(
-    (total, meal) => ({
-      protein: total.protein + (Number(meal.protein) || 0),
-      carbs: total.carbs + (Number(meal.carbs) || 0),
-      fat: total.fat + (Number(meal.fat) || 0),
-    }),
-    { protein: 0, carbs: 0, fat: 0 }
-  );
+  const consumedMacros = {
+    protein: getLoggedMacroTotal(meals, "protein"),
+    carbs: getLoggedMacroTotal(meals, "carbs"),
+    fat: getLoggedMacroTotal(meals, "fat"),
+  };
   const displayName = firstName(userData);
   const diets = (Array.isArray(userData?.diets) ? userData.diets : []).filter(Boolean);
   const allergies = [...(userData?.allergies || []), ...(userData?.customAllergies || [])].filter(Boolean);
   const activity = getActivitySummary(workouts, steps, fitness.daily, fitness.workouts);
-  const suggestions = getMealSuggestions({ diets, allergies, activity, workouts });
+  const suggestions = getMealSuggestions({ diets, allergies, activity, nutrition });
   const targetWeight = Number(userData?.targetWeight) || 0;
   const currentWeight = Number(userData?.weight) || 0;
   const today = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
-  const proteinGoal = nutrition.protein;
-  const carbsGoal = nutrition.carbs;
-  const fatGoal = nutrition.fat;
+  const proteinGoal = nutrition.proteinTarget;
+  const carbsGoal = nutrition.carbohydrateTarget;
+  const fatGoal = nutrition.fatTarget;
+  const planKey = nutrition.available
+    ? [
+        userId,
+        nutrition.calorieTarget,
+        nutrition.proteinTarget,
+        nutrition.carbohydrateTarget,
+        nutrition.fatTarget,
+        nutrition.bmr,
+        nutrition.tdee,
+        nutrition.goal,
+      ].join("|")
+    : null;
+  const planSaveStatus = !nutrition.available
+    ? "unavailable"
+    : planSaveState.planKey === planKey ? planSaveState.status : "loading";
+  const planSaveError = planSaveState.planKey === planKey ? planSaveState.error : "";
 
   useEffect(() => {
     localStorage.setItem(`vitalsDashboard:${userId}`, JSON.stringify(dashboardData));
   }, [dashboardData, userId]);
+
+  useEffect(() => {
+    let active = true;
+    let unsubscribe = () => {};
+    const date = getTodayKey();
+    const legacy = readDashboardState(userId);
+
+    async function synchronizeDashboard() {
+      try {
+        await migrateLegacyDashboard(userId, date, legacy);
+        if (!active) return;
+        unsubscribe = subscribeDashboard(
+          userId,
+          date,
+          (synchronizedData) => {
+            if (!active) return;
+            setDashboardData(synchronizedData);
+            setDashboardSyncState({ status: "synced", error: "" });
+          },
+          (error) => {
+            if (!active) return;
+            setDashboardSyncState({
+              status: "error",
+              error: error.message || "Dashboard records could not be synchronized.",
+            });
+          }
+        );
+      } catch (error) {
+        if (!active) return;
+        setDashboardSyncState({
+          status: "error",
+          error: error.message || "Dashboard records could not be synchronized.",
+        });
+      }
+    }
+
+    synchronizeDashboard();
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (!nutrition.available) return undefined;
+
+    let active = true;
+    const date = getNutritionDateKey();
+    const target = {
+      calorieTarget: nutrition.calorieTarget,
+      proteinTarget: nutrition.proteinTarget,
+      carbohydrateTarget: nutrition.carbohydrateTarget,
+      fatTarget: nutrition.fatTarget,
+      bmr: nutrition.bmr,
+      tdee: nutrition.tdee,
+      goal: nutrition.goal,
+    };
+    const operation = nutritionPlanQueue.current.then(async () => {
+      const savedPlan = await loadNutritionPlan(userId, date);
+      const matchesCurrentTargets = savedPlan
+        && Object.entries(target).every(([field, value]) => savedPlan[field] === value);
+      if (!matchesCurrentTargets) {
+        await saveNutritionPlan(userId, date, target);
+      }
+    });
+    nutritionPlanQueue.current = operation.catch(() => undefined);
+    operation.then(() => {
+      if (active) setPlanSaveState({ planKey, status: "saved", error: "" });
+    }).catch((error) => {
+      if (!active) return;
+      setPlanSaveState({
+        planKey,
+        status: "error",
+        error: error.message || "The daily nutrition plan could not be saved.",
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [nutrition, planKey, userId]);
 
   function selectView(id) {
     setView(id);
@@ -474,42 +478,72 @@ export default function Dashboard({
     setMobileMenuOpen(false);
   }
 
+  function reportDashboardSaveError(error) {
+    setDashboardSyncState({
+      status: "error",
+      error: error.message || "Dashboard records could not be saved to your account.",
+    });
+  }
+
   function saveEntry(entry) {
     const date = getTodayKey();
     if (modal === "meal") {
-      setDashboardData((previous) => ({ ...previous, date, meals: [...previous.meals, { ...entry, id: Date.now() }] }));
+      const loggedMeal = { ...entry, id: createDashboardEntryId("meal"), time: Date.now() };
+      setDashboardData((previous) => ({ ...previous, date, meals: [...previous.meals, loggedMeal] }));
+      saveDashboardMeal(userId, date, loggedMeal).catch(reportDashboardSaveError);
       setNotice(`${entry.name} added to today's meal log.`);
     } else if (modal === "weight") {
+      const weightEntry = { id: createDashboardEntryId("weight"), weight: entry.weight, time: Date.now() };
       setDashboardData((previous) => ({
         ...previous,
         date,
-        weightEntries: [...previous.weightEntries, { weight: entry.weight, time: Date.now() }],
+        weightEntries: [...previous.weightEntries, weightEntry],
       }));
       setUserData((previous) => ({ ...previous, weight: String(entry.weight) }));
+      saveWeightEntry(userId, weightEntry).catch(reportDashboardSaveError);
       setNotice(`Weight updated to ${entry.weight} kg.`);
     } else {
+      const loggedWorkout = {
+        ...entry,
+        id: createDashboardEntryId("workout"),
+        time: Date.now(),
+      };
       setDashboardData((previous) => ({
         ...previous,
         date,
         steps: previous.steps + entry.steps,
-        workouts: [...previous.workouts, { ...entry, id: Date.now(), time: Date.now() }],
+        workouts: [...previous.workouts, loggedWorkout],
       }));
+      Promise.all([
+        saveDashboardWorkout(userId, date, loggedWorkout),
+        entry.steps > 0 ? addManualSteps(userId, date, entry.steps) : Promise.resolve(),
+      ]).catch(reportDashboardSaveError);
       setNotice(`${entry.label} added. Meal suggestions updated for your activity.`);
     }
     setModal(null);
   }
 
   function addSuggestedMeal(meal) {
+    const loggedMeal = {
+      ...meal,
+      id: createDashboardEntryId("meal"),
+      time: Date.now(),
+      carbs: meal.carbohydrates ?? meal.carbs ?? null,
+      suggested: true,
+    };
+    const date = getTodayKey();
     setDashboardData((previous) => ({
       ...previous,
-      date: getTodayKey(),
-      meals: [...previous.meals, { ...meal, id: Date.now(), suggested: true }],
+      date,
+      meals: [...previous.meals, loggedMeal],
     }));
+    saveDashboardMeal(userId, date, loggedMeal).catch(reportDashboardSaveError);
     setNotice(`${meal.name} added to today's meal log.`);
   }
 
   function addWater() {
     setDashboardData((previous) => ({ ...previous, date: getTodayKey(), waterGlasses: Math.min(previous.waterGlasses + 1, 10) }));
+    addWaterGlass(userId, getTodayKey()).catch(reportDashboardSaveError);
   }
 
   const navControls = (className) => (
@@ -573,7 +607,7 @@ export default function Dashboard({
       <aside className="dashboard-sidebar">
         <div className="dashboard-profile">
           <strong>{displayName}</strong>
-          <span>{calorieGoal ? `Goal: ${calorieGoal.toLocaleString()} kcal` : "Complete your profile for a calorie target"}</span>
+          <span>{calorieGoal !== null ? `Estimated target: ${calorieGoal.toLocaleString()} kcal` : "Complete your profile for a calorie target"}</span>
           <span className="dashboard-sidebar-goal">{userData?.goal || userData?.lifestyleGoal || "Build healthy habits"}</span>
         </div>
         {navControls("dashboard-side-nav")}
@@ -588,6 +622,11 @@ export default function Dashboard({
       </aside>
 
       <main className="dashboard-main">
+        {dashboardSyncState.status === "error" && (
+          <p aria-live="assertive" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Cloud sync is unavailable. Changes remain on this device until synchronization succeeds. {dashboardSyncState.error}
+          </p>
+        )}
         {accountError && (
           <p aria-live="assertive" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {accountError}
@@ -597,6 +636,11 @@ export default function Dashboard({
           <p aria-live="assertive" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
             {profileSaveError || "Profile changes could not be saved."}{" "}
             <button className="font-semibold underline" onClick={onRetryProfileSave} type="button">Try again</button>
+          </p>
+        )}
+        {planSaveStatus === "error" && (
+          <p aria-live="assertive" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {planSaveError}
           </p>
         )}
         {view === "dashboard" && (
@@ -620,6 +664,8 @@ export default function Dashboard({
             today={today}
             waterGlasses={waterGlasses}
             carbsGoal={carbsGoal}
+            nutrition={nutrition}
+            planSaveStatus={planSaveStatus}
           />
         )}
         {view === "meals" && (
@@ -632,7 +678,7 @@ export default function Dashboard({
             consumed={consumed}
           />
         )}
-        {view === "recipes" && <RecipesPage allergies={allergies} diets={diets} onAddMeal={addSuggestedMeal} />}
+        {view === "recipes" && <RecipesPage onAddMeal={addSuggestedMeal} suggestions={suggestions} />}
         {view === "activity" && (
           <ActivityPage
             activity={activity}
@@ -674,26 +720,27 @@ function PageHeader({ eyebrow, title, description, action }) {
 function DashboardHome({
   activity, addSuggestedMeal, addWater, caloriesLeft, calorieGoal, calorieProgress, consumedMacros,
   allergies, diets, displayName, fatGoal, meals, notice, onLogMeal, proteinGoal, suggestions, today, waterGlasses, carbsGoal,
+  nutrition, planSaveStatus,
 }) {
   return (
     <>
       <PageHeader
         action={<button className="dashboard-primary-button" onClick={onLogMeal} type="button"><CirclePlus size={18} /> Log Meal</button>}
-        description={calorieGoal ? `You've reached ${Math.round(calorieProgress)}% of your daily target. Keep it up!` : "Finish your profile to get a nutrition target tailored to you."}
+        description={calorieGoal !== null ? `You've logged ${Math.round(calorieProgress)}% of your estimated daily target.` : nutrition.error}
         eyebrow={today}
         title={`Good morning, ${displayName}.`}
       />
       <section aria-label="Daily nutrition and hydration" className="dashboard-overview-grid">
         <article className="dashboard-nutrition-card">
           <div
-            aria-label={calorieGoal ? `${caloriesLeft.toLocaleString()} calories left of ${calorieGoal.toLocaleString()}` : "Set up your profile to calculate calorie needs"}
+            aria-label={calorieGoal !== null ? `${caloriesLeft.toLocaleString()} calories left of ${calorieGoal.toLocaleString()}` : "Set up your profile to calculate calorie needs"}
             className="dashboard-calorie-ring"
             role="img"
             style={{ "--progress": `${calorieProgress}%` }}
           >
             <div className="dashboard-calorie-ring-inner">
-              <strong>{calorieGoal ? caloriesLeft.toLocaleString() : "--"}</strong>
-              <span>{calorieGoal ? "KCAL LEFT" : "SET GOAL"}</span>
+              <strong>{calorieGoal !== null ? caloriesLeft.toLocaleString() : "--"}</strong>
+              <span>{calorieGoal !== null ? "KCAL LEFT" : "SET GOAL"}</span>
             </div>
           </div>
           <div className="dashboard-nutrients">
@@ -719,10 +766,16 @@ function DashboardHome({
           </button>
         </article>
       </section>
+      <p className="dashboard-nutrition-disclaimer">
+        {calorieGoal !== null
+          ? `Estimated calorie target: ${calorieGoal.toLocaleString()} kcal/day · BMR ${nutrition.bmr.toLocaleString()} kcal · TDEE ${nutrition.tdee.toLocaleString()} kcal. Your target uses your usual activity level; synced active calories are not added again. This estimate is not medical advice.`
+          : nutrition.error}
+        {planSaveStatus === "saved" && <span> Daily plan saved to your account.</span>}
+      </p>
       <section aria-labelledby="meal-log-title" className="dashboard-meal-section">
         <div className="dashboard-section-heading">
           <div><p className="dashboard-eyebrow">{meals.length} meals logged · {activity.stepsAvailable ? `${activity.stepsSource === "manual" ? "manual " : ""}${activity.steps.toLocaleString()} steps` : "no step data"}</p><h2 id="meal-log-title">Today&apos;s Meal Log</h2></div>
-          <span className="dashboard-meal-summary">{getMealCalories(meals).toLocaleString()} kcal eaten</span>
+          <span className="dashboard-meal-summary">{getMealCalories(meals).toLocaleString()} kcal logged</span>
         </div>
         {meals.length ? (
           <div className="dashboard-meal-grid">
@@ -748,45 +801,83 @@ function DashboardHome({
           </div>
           <span className="dashboard-activity-pill"><Flame size={15} /> {activity.activeCaloriesKcal === null ? "--" : activity.activeCaloriesKcal} active kcal</span>
         </div>
-        {suggestions.meals.length ? (
-          <div className="dashboard-suggestion-grid">
-            {suggestions.meals.map((meal) => (
-              <article className="dashboard-suggestion-card" key={meal.id}>
-                <span className="dashboard-suggestion-badge">{meal.workout === "strength" ? "Protein recovery" : meal.workout === "cardio" ? "Energy replenishment" : "Balanced pick"}</span>
-                <h3>{meal.name}</h3>
-                <p>{meal.description}</p>
-                <div className="dashboard-suggestion-macros">
-                  <strong>{meal.calories} <span>kcal</span></strong>
-                  <span>{meal.protein}g protein</span><span>{meal.carbs}g carbs</span>
-                </div>
-                <button className="dashboard-text-action" onClick={() => addSuggestedMeal(meal)} type="button">Add to today&apos;s log <ChevronRight size={15} /></button>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="dashboard-empty-meals">
-            <p>No suggestions match your current diet and allergy selections. Review your preferences or log a meal manually.</p>
-          </div>
-        )}
+        <MealRecommendationList onAddMeal={addSuggestedMeal} suggestions={suggestions} />
         {notice && <p aria-live="polite" className="dashboard-feedback">{notice}</p>}
         <p className="dashboard-filter-note">
           <Leaf size={14} />
           {diets.length || allergies.length
-            ? `Filtered for ${[...diets, ...allergies].join(", ")}.`
-            : "Set a dietary preference to further personalize suggestions."}
-          {" "}Check ingredients and allergen labels before eating.
+            ? `Diet and allergy preferences: ${[...diets, ...allergies].join(", ")}.`
+            : "Set dietary preferences to filter verified food data when a catalog is configured."}
+          {" "}Always check ingredient and allergen labels.
         </p>
       </section>
     </>
   );
 }
 
+function MealRecommendationList({ onAddMeal, suggestions }) {
+  const hasRecommendations = suggestions.meals.some((slot) => slot.recommendation);
+  return (
+    <>
+      {!hasRecommendations && (
+        <div className="dashboard-empty-meals">
+          <p>{suggestions.reason || "No verified meals match your selected preferences."}</p>
+        </div>
+      )}
+      <div className="dashboard-suggestion-grid">
+        {suggestions.meals.map((slot) => (
+          <MealRecommendationCard key={slot.mealType} onAddMeal={onAddMeal} slot={slot} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function MealRecommendationCard({ onAddMeal, slot }) {
+  const meal = slot.recommendation;
+  if (!meal) {
+    return (
+      <article className="dashboard-suggestion-card">
+        <span className="dashboard-suggestion-badge">{slot.label}</span>
+        <h3>No verified option</h3>
+        <p>Meal nutrition is not shown until a sourced food record matches your profile.</p>
+      </article>
+    );
+  }
+
+  const ingredients = meal.ingredients
+    .map((ingredient) => typeof ingredient === "string" ? ingredient : ingredient.name)
+    .filter(Boolean);
+  return (
+    <article className="dashboard-suggestion-card">
+      <span className="dashboard-suggestion-badge">{slot.label}</span>
+      <h3>{meal.name}</h3>
+      <p>{meal.portionSize}</p>
+      <div className="dashboard-suggestion-macros">
+        <strong>{meal.calories} <span>kcal</span></strong>
+        <span>{meal.protein}g protein</span>
+        <span>{meal.carbohydrates}g carbs</span>
+        <span>{meal.fat}g fat</span>
+      </div>
+      <p><strong>Ingredients:</strong> {ingredients.join(", ")}</p>
+      {meal.preparationInstructions && <p><strong>Preparation:</strong> {meal.preparationInstructions}</p>}
+      <p className="dashboard-food-source">
+        Nutrition source: <a href={meal.sourceUrl} rel="noreferrer" target="_blank">{meal.sourceName}</a>
+      </p>
+      <button className="dashboard-text-action" onClick={() => onAddMeal(meal)} type="button">
+        Add to today&apos;s log <ChevronRight size={15} />
+      </button>
+    </article>
+  );
+}
+
 function MealCard({ meal }) {
+  const macroLabel = (value) => value === null || value === undefined ? "--" : value;
   return (
     <article className="dashboard-meal-card">
       <div className="dashboard-meal-image dashboard-meal-image-empty"><span>{meal.suggested ? "Suggested" : "Logged today"}</span></div>
       <div className="dashboard-meal-details">
-        <div><h3>{meal.name}</h3><p>P {meal.protein || 0}g · C {meal.carbs || 0}g · F {meal.fat || 0}g</p></div>
+        <div><h3>{meal.name}</h3><p>P {macroLabel(meal.protein)}g · C {macroLabel(meal.carbs)}g · F {macroLabel(meal.fat)}g</p></div>
         <strong>{meal.calories}<span>kcal</span></strong>
       </div>
     </article>
@@ -803,23 +894,14 @@ function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, suggestions, calo
         title="Meal Planner"
       />
       <div className="dashboard-stat-strip">
-        <StatCard label="Daily calorie goal" value={calorieGoal ? `${calorieGoal.toLocaleString()} kcal` : "Set profile"} />
-        <StatCard label="Logged today" value={`${consumed.toLocaleString()} kcal`} />
+        <StatCard label="Estimated daily target" value={calorieGoal !== null ? `${calorieGoal.toLocaleString()} kcal` : "Set profile"} />
+        <StatCard label="Calories logged" value={`${consumed.toLocaleString()} kcal`} />
         <StatCard label="Meals logged" value={String(meals.length)} />
       </div>
       <section className="dashboard-data-section">
         <SectionHeading eyebrow="Recommended next" title={suggestions.title} />
         <p className="dashboard-section-subtitle">{suggestions.subtitle}</p>
-        <div className="dashboard-suggestion-grid">
-          {suggestions.meals.map((meal) => (
-            <article className="dashboard-suggestion-card" key={meal.id}>
-              <span className="dashboard-suggestion-badge">{meal.workout === "strength" ? "Protein recovery" : "Activity support"}</span>
-              <h3>{meal.name}</h3><p>{meal.description}</p>
-              <div className="dashboard-suggestion-macros"><strong>{meal.calories} <span>kcal</span></strong><span>{meal.protein}g protein</span><span>{meal.carbs}g carbs</span></div>
-              <button className="dashboard-text-action" onClick={() => addSuggestedMeal(meal)} type="button">Add to today&apos;s log <ChevronRight size={15} /></button>
-            </article>
-          ))}
-        </div>
+        <MealRecommendationList onAddMeal={addSuggestedMeal} suggestions={suggestions} />
       </section>
       <section className="dashboard-data-section">
         <SectionHeading eyebrow={`${meals.length} meals`} title="Today&apos;s log" />
@@ -829,30 +911,16 @@ function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, suggestions, calo
   );
 }
 
-function RecipesPage({ allergies, diets, onAddMeal }) {
-  const meals = mealLibrary.filter((meal) => {
-    return satisfiesDiets(meal, getDietKeys(diets)) && !matchesAllergy(meal, allergies);
-  });
+function RecipesPage({ onAddMeal, suggestions }) {
   return (
     <>
-      <PageHeader description="Recipes are filtered using the diet and allergy information from your setup." eyebrow="Cook something good" title="Recipes" />
+      <PageHeader description="Only recipes with a verified nutrition source are shown. Diet and allergy preferences are applied when filtering." eyebrow="Cook something good" title="Recipes" />
       <section className="dashboard-data-section">
         <div className="dashboard-section-heading">
           <div><p className="dashboard-eyebrow">Personalized picks</p><h2>Recipes for your preferences</h2></div>
-          <span className="dashboard-meal-summary">{meals.length} recipes</span>
+          <span className="dashboard-meal-summary">{suggestions.meals.filter((slot) => slot.recommendation).length} recipes</span>
         </div>
-        {meals.length ? (
-          <div className="dashboard-suggestion-grid">
-            {meals.map((meal) => (
-              <article className="dashboard-suggestion-card" key={meal.id}>
-                <span className="dashboard-suggestion-badge">{meal.protein}g protein · {meal.calories} kcal</span>
-                <h3>{meal.name}</h3><p>{meal.description}</p>
-                <div className="dashboard-recipe-tags">{meal.tags.filter((tag) => tag !== "omnivore").map((tag) => <span className="dashboard-tag" key={tag}>{tag}</span>)}</div>
-                <button className="dashboard-text-action" onClick={() => onAddMeal(meal)} type="button">Add to today&apos;s log <ChevronRight size={15} /></button>
-              </article>
-            ))}
-          </div>
-        ) : <EmptyState text="No recipes match the current diet and allergy preferences. Update your preferences to see more recipes." />}
+        <MealRecommendationList onAddMeal={onAddMeal} suggestions={suggestions} />
       </section>
     </>
   );
@@ -974,7 +1042,7 @@ function ProgressPage({ currentWeight, onLogWeight, targetWeight, userData, weig
           </article>
           <article className="dashboard-info-card">
             <div className="dashboard-info-card-heading"><span className="dashboard-info-icon"><Flame size={18} /></span><div><h3>Activity today</h3><p>From workouts and connected data</p></div></div>
-            <div className="dashboard-profile-facts"><span>{activity.stepsAvailable ? `${activity.steps.toLocaleString()} steps` : "-- steps"}</span><span>{activity.workoutMinutes} workout minutes</span><span>{activity.activeCaloriesKcal === null ? "-- active kcal" : `${activity.activeCaloriesKcal} active kcal`}</span></div>
+            <div className="dashboard-profile-facts"><span>{activity.stepsAvailable ? `${activity.steps.toLocaleString()} steps` : "-- steps"}</span><span>{activity.workoutMinutes === null ? "-- workout minutes" : `${activity.workoutMinutes} workout minutes`}</span><span>{activity.activeCaloriesKcal === null ? "-- active kcal" : `${activity.activeCaloriesKcal} active kcal`}</span></div>
           </article>
         </div>
       </section>
@@ -1009,11 +1077,13 @@ function SectionHeading({ eyebrow, title }) {
 }
 
 function NutrientProgress({ label, current, target, color }) {
-  const progress = target ? Math.min((current / target) * 100, 100) : 0;
+  const progress = target && current !== null ? Math.min((current / target) * 100, 100) : 0;
+  const currentLabel = current === null ? "--" : current;
+  const targetLabel = target === null ? "--" : target;
   return (
     <div className="dashboard-nutrient">
-      <div className="dashboard-nutrient-label"><span>{label}</span><strong>{current}g / {target || "--"}g</strong></div>
-      <div aria-label={`${label} ${current} of ${target || "no"} grams`} className="dashboard-nutrient-track" role="img">
+      <div className="dashboard-nutrient-label"><span>{label}</span><strong>{currentLabel}g / {targetLabel}g</strong></div>
+      <div aria-label={`${label} ${currentLabel} of ${targetLabel} grams`} className="dashboard-nutrient-track" role="img">
         <span className={`dashboard-nutrient-fill ${color}`} style={{ width: `${progress}%` }} />
       </div>
     </div>

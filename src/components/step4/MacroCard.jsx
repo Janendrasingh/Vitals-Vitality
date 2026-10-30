@@ -16,7 +16,7 @@ export default function MacroCards({ userData }) {
                     <Beef className="text-green-700"/>
 
                     <span className="font-bold text-green-700">
-                        {nutrition.protein} g
+                        {nutrition.available ? `${nutrition.protein} g` : "—"}
                     </span>
 
                 </div>
@@ -26,7 +26,7 @@ export default function MacroCards({ userData }) {
                 </h2>
 
                 <p className="text-gray-500">
-                    30% TARGET
+                    Goal- and weight-based estimate
                 </p>
 
             </div>
@@ -38,7 +38,7 @@ export default function MacroCards({ userData }) {
                     <Wheat className="text-orange-500"/>
 
                     <span className="font-bold text-orange-500">
-                        {nutrition.carbs} g
+                        {nutrition.available ? `${nutrition.carbs} g` : "—"}
                     </span>
 
                 </div>
@@ -48,7 +48,7 @@ export default function MacroCards({ userData }) {
                 </h2>
 
                 <p className="text-gray-500">
-                    40% TARGET
+                    Remaining calorie target
                 </p>
 
             </div>

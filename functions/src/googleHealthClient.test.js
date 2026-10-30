@@ -6,6 +6,7 @@ import {
   readGoogleHealthActivity,
   refreshGoogleHealthAccessToken,
   revokeGoogleHealthToken,
+  verifyGoogleHealthIdentity,
 } from "./googleHealthClient.js";
 
 function response(status, body) {
@@ -132,4 +133,54 @@ test("revoke sends only the refresh token to Google's revocation endpoint", asyn
   });
   assert.equal(request[0], "https://oauth2.googleapis.com/revoke");
   assert.equal(request[1].body.get("token"), "refresh-token");
+});
+
+test("verifies the linked Google Health identity before a connection is accepted", async () => {
+  const accessToken = "short-lived-access-token";
+  let request;
+  const identity = await verifyGoogleHealthIdentity({
+    accessToken,
+    fetchImpl: async (...args) => {
+      request = args;
+      return response(200, { healthUserId: "linked-health-user" });
+    },
+  });
+
+  assert.deepEqual(identity, { healthUserId: "linked-health-user" });
+  assert.equal(request[0], "https://health.googleapis.com/v4/users/me/identity");
+  assert.equal(request[1].headers.Authorization, ["Bearer", accessToken].join(" "));
+});
+
+test("reports unlinked accounts and other identity verification failures", async () => {
+  await assert.rejects(verifyGoogleHealthIdentity({
+    accessToken: "token",
+    fetchImpl: async () => response(200, {}),
+  }), {
+    code: "identity-verification-failed",
+    message: /invalid account identity/,
+  });
+
+  await assert.rejects(verifyGoogleHealthIdentity({
+    accessToken: "token",
+    fetchImpl: async () => response(400, {
+      error: { status: "FAILED_PRECONDITION", reason: "ACCOUNT_NOT_LINKED" },
+    }),
+  }), {
+    code: "account-not-linked",
+    message: /not linked to Google Health/,
+  });
+
+  await assert.rejects(verifyGoogleHealthIdentity({
+    accessToken: "token",
+    fetchImpl: async () => response(403, {}),
+  }), {
+    code: "identity-permission-denied",
+  });
+
+  await assert.rejects(verifyGoogleHealthIdentity({
+    accessToken: "token",
+    fetchImpl: async () => response(500, {}),
+  }), {
+    code: "identity-verification-failed",
+  });
 });

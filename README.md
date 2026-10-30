@@ -38,9 +38,42 @@ The app requires a Firebase Web App configuration before registration or sign-in
 6. Copy `.env.example` to `.env.local` in this project folder and fill in the `VITE_FIREBASE_*` values from the Web App settings. Keep `.env.local` private and never add service-account keys or client secrets to `VITE_` variables.
 7. Restart the Vite development server, then register an account and complete the profile. The app loads the Firebase auth session on startup and saves profile changes to Firestore.
 
-The stored user profile contains the account UID/email, onboarding fields (name, age, body measurements, goals, activity, diet and allergies, lifestyle details), completion state, and creation/update timestamps. Existing unauthenticated `vitalsProfile` browser data is not automatically copied into a new account, to avoid attaching one person's local health data to another account. Dashboard meal, hydration, manual activity, and weight logs remain in browser local storage in this phase; they are partitioned by Firebase UID and are not account-synced.
+The stored user profile contains the account UID/email, onboarding fields (name, age, body measurements, goals, activity, diet and allergies, lifestyle details), completion state, and creation/update timestamps. Existing unauthenticated `vitalsProfile` browser data is not automatically copied into a new account, to avoid attaching one person's local health data to another account. Dashboard meal, hydration, manual activity, and weight logs are migrated from the signed-in user's `vitalsDashboard:{uid}` local-storage entry into that same user's Firestore records. The migration uses stable entry IDs, does not remove local data, and does not overwrite existing cloud entries. Firestore snapshots synchronize these records across signed-in devices.
 
 If authentication or profile loading fails, check the browser message, Firebase Console provider/database configuration, and the published Firestore rules. No Firebase project credentials have been included in this repository.
+
+### Firebase Hosting and PWA
+
+The Vite production build is served from `dist/` by Firebase Hosting. The Hosting configuration includes an SPA fallback for client-side routes. The web app manifest, application icons, service worker, and offline fallback are included. The service worker caches only same-origin static build assets, icons, and the manifest; it does not cache HTML navigations, Firebase data, authentication responses, or Google Health API responses. Signing in and syncing require a network connection.
+
+1. Install and sign in to the Firebase CLI, then select the existing project:
+
+   ```powershell
+   npm install --global firebase-tools
+   firebase login
+   firebase use --add
+   ```
+
+2. Ensure `.env.local` contains the production Firebase Web App values. These `VITE_FIREBASE_*` values are public client configuration, not service-account credentials. Set `VITE_GOOGLE_HEALTH_FUNCTION_URL` only after the function has been deployed.
+3. Build and deploy only the website:
+
+   ```powershell
+   npm run build
+   firebase deploy --only hosting
+   ```
+
+   This does not deploy Cloud Functions. Firebase Hosting commonly serves the app at `https://PROJECT_ID.web.app`; add the chosen production origin to Firebase Authentication's authorized domains and to the Google OAuth client's **Authorized JavaScript origins**. The production app origin must exactly match `GOOGLE_HEALTH_APP_ORIGIN`.
+
+### Dashboard log synchronization
+
+When an authenticated user opens the dashboard, current-day meals, water, manual steps/workouts, and retained weight history from that UID's local-storage cache are migrated into:
+
+* `users/{uid}/dashboardDays/{YYYY-MM-DD}` for the day's water and manual steps.
+* `users/{uid}/dashboardDays/{YYYY-MM-DD}/meals/{entryId}` for meals.
+* `users/{uid}/dashboardDays/{YYYY-MM-DD}/manualWorkouts/{entryId}` for manually logged workouts.
+* `users/{uid}/weightEntries/{entryId}` for weight history.
+
+Stable IDs make retries idempotent. Existing Firestore entries are left intact; day-level water and steps preserve the greater local/cloud count, and water updates use a Firestore transaction. Dashboard snapshots provide cross-device updates. Local storage is retained as a fallback and migration source. If rules are not published or a write fails, the dashboard displays a cloud-sync error and keeps the local copy. Publish the updated rules before relying on cloud synchronization.
 
 ## 🎯 Project Objective
 
@@ -71,8 +104,18 @@ No live provider connection or data retrieval can be claimed until these externa
 
 1. In Google Cloud Console, enable the Google Health API for the project and confirm that the project/account is eligible for API access. Complete any Google Health developer enrollment, consent-screen verification, and production approval required for your intended audience. Add test users while the OAuth consent screen is in testing.
 2. Create a **Web application** OAuth client. Add the exact redirect URI `https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/googleHealthApi/callback`. Configure the app's approved domain and branding as required by Google.
-3. Configure Firebase CLI for the existing Firebase project (`firebase login`, then `firebase use --add`). The function targets the Firebase-supported Node.js 22 runtime. Cloud Functions deployment requires the Blaze billing plan; this implementation does not enable billing or deploy anything. Review Firebase/Google Cloud pricing before choosing to upgrade. Normal use may fall within applicable no-cost quotas, but charges are possible.
-4. Copy `functions/.env.example` to `functions/.env.YOUR_PROJECT_ID` and fill in the OAuth client ID, exact web-app origin (scheme + host, no path), and deployed function base URL. This file is ignored by git. Copy `.env.example` to `.env.local` and set `VITE_GOOGLE_HEALTH_FUNCTION_URL` to that same function base URL.
+3. Configure the Firebase CLI for the existing project. The function targets Node.js 22. Cloud Functions deployment requires the Blaze billing plan; this implementation does not enable billing or deploy anything. Review Firebase/Google Cloud pricing and explicitly approve any billing-plan change before proceeding.
+4. Configure the non-secret function parameters and frontend URL. Substitute your project ID and final Hosting origin; do not put OAuth secrets in either file:
+
+   ```powershell
+   $projectId = "YOUR_PROJECT_ID"
+   Copy-Item functions\.env.example "functions\.env.$projectId"
+   notepad "functions\.env.$projectId"
+   Copy-Item .env.example .env.local
+   notepad .env.local
+   ```
+
+   In `functions/.env.YOUR_PROJECT_ID`, set `GOOGLE_HEALTH_CLIENT_ID`, `GOOGLE_HEALTH_APP_ORIGIN` (for example `https://YOUR_PROJECT_ID.web.app`, with no path), and `GOOGLE_HEALTH_FUNCTION_URL` (`https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net/googleHealthApi`). In root `.env.local`, set `VITE_GOOGLE_HEALTH_FUNCTION_URL` to that same function base URL. The frontend Firebase values must also be set in `.env.local`.
 5. Set the two server-only secrets in the Firebase project:
 
    ```sh
@@ -86,13 +129,14 @@ No live provider connection or data retrieval can be claimed until these externa
    ```
 
    Keep both values private and back up the encryption key securely. Losing it prevents decrypting saved refresh tokens; rotating it requires a deliberate token re-encryption or reconnect migration.
-6. Publish rules and deploy the function only after reviewing billing and configuration:
+6. Publish Firestore rules and deploy the function as separate operations, only after reviewing the rules, verifying all Google/Firebase configuration, and approving any required billing change:
 
-   ```sh
-   firebase deploy --only firestore:rules,functions:googleHealthApi
+   ```powershell
+   firebase deploy --only firestore:rules
+   firebase deploy --only functions:googleHealthApi
    ```
 
-7. Copy the deployed function base URL to `VITE_GOOGLE_HEALTH_FUNCTION_URL`, restart Vite, sign in, and connect from **Activity**. Google consent must succeed before the server marks the integration connected. The callback then triggers the initial seven-day sync; later synchronizations are manual. Disconnect revokes Google access and removes the server-side token record.
+7. After deploying the function, verify that the configured function URL and OAuth callback match exactly, rebuild the frontend with its `VITE_GOOGLE_HEALTH_FUNCTION_URL`, then deploy the website separately with `firebase deploy --only hosting`. Sign in and connect from **Activity**. The callback calls Google Health `users.getIdentity`; an unlinked, unauthorized, malformed, or failed identity response will not be marked connected. Successful consent and verification trigger the initial seven-day sync; later synchronizations are manual. Disconnect revokes Google access and removes the server-side token record.
 
 Google may require additional API access approval or OAuth app verification before users outside the configured test audience can connect. Do not put the OAuth client secret, encryption key, access token, or refresh token in `.env.local`, any `VITE_` variable, source control, or Firestore client-readable records.
 
@@ -122,3 +166,21 @@ Meal suggestions are examples filtered against the selected diet and known aller
 Janendra Singh
 
 Developed as a health-tech project to demonstrate full-stack development, API integration, data analytics, and personalized recommendation systems.
+
+## Personalized nutrition plans
+
+The dashboard estimates daily energy and macronutrient targets from the profile's age, weight, height, gender, usual activity level, and goal. The estimate uses the Mifflin–St Jeor BMR equation, activity multipliers of 1.2 (sedentary), 1.55 (moderate), and 1.725 (very active), a weight-loss adjustment capped at 500 kcal/day and 20% of TDEE, and a muscle-gain adjustment capped at 300 kcal/day and 10% of TDEE. Weight-loss targets are not set below estimated BMR. Protein is weight- and goal-based, fat is 30% of target calories, and carbohydrate calories use the remainder.
+
+These are estimates, not medical advice. Missing or unsupported profile values do not produce a target. Synced active calories and workouts inform meal-selection context only; they are not added to TDEE. Food intake shown in the dashboard is user-logged data, not a sensor measurement.
+
+Daily targets are stored separately from profile data at `users/{uid}/nutritionPlans/{YYYY-MM-DD}`. Firestore rules allow only the authenticated owner to read or write validated plan records.
+
+Meal selection requires verified nutrition records, portion sizes, ingredients, allergen metadata, and source citations. The repository currently has no verified meal dataset configured, so the app intentionally displays meal slots without invented nutritional values. To enable recommendations, populate `src/nutrition/mealCatalog.js` with sourced records following the validator in `src/nutrition/mealRecommendations.js`; records without complete nutrition and source metadata are excluded.
+
+Run the frontend checks from `Vitals and Vitality/`:
+
+```sh
+npm test
+npm run lint
+npm run build
+```

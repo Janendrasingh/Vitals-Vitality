@@ -22,19 +22,10 @@ export default function FatCard({ userData }) {
                         </h2>
 
                         <p className="text-gray-500">
-                            30% TARGET · {nutrition.fat} g
+                            {nutrition.available ? `${nutrition.fat} g/day estimated` : nutrition.error}
                         </p>
 
                     </div>
-
-                </div>
-
-                <div className="w-36 h-2 rounded-full bg-gray-200">
-
-                    <div
-                        className="h-full rounded-full bg-green-700"
-                        style={{width:"65%"}}
-                    />
 
                 </div>
 

@@ -287,6 +287,28 @@
   line-height: 1.6;
 }
 
+.dashboard-nutrition-disclaimer {
+  margin: 12px 4px 0;
+  color: #74807e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.dashboard-nutrition-disclaimer span {
+  color: var(--dashboard-green);
+  font-weight: 700;
+}
+
+.dashboard-food-source {
+  margin-top: 12px !important;
+  font-size: 10px !important;
+}
+
+.dashboard-food-source a {
+  color: var(--dashboard-green);
+  text-decoration: underline;
+}
+
 .dashboard-stat-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -6,6 +6,65 @@ export class GoogleHealthClientError extends Error {
   }
 }
 
+export async function verifyGoogleHealthIdentity({
+  accessToken,
+  fetchImpl = fetch,
+}) {
+  let response;
+  try {
+    response = await fetchImpl("https://health.googleapis.com/v4/users/me/identity", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+  } catch {
+    throw new GoogleHealthClientError(
+      "identity-verification-failed",
+      "Google Health account verification could not be completed. Try connecting again."
+    );
+  }
+
+  let result = {};
+  try {
+    result = await response.json();
+  } catch {
+    if (response.ok) {
+      throw new GoogleHealthClientError(
+        "identity-verification-failed",
+        "Google Health returned an invalid account verification response."
+      );
+    }
+  }
+
+  if (!response.ok) {
+    const errorText = JSON.stringify(result);
+    if (errorText.includes("ACCOUNT_NOT_LINKED")) {
+      throw new GoogleHealthClientError(
+        "account-not-linked",
+        "This Google Account is not linked to Google Health. Open the Google Health app, sign in with this account, finish setting up or migrating your profile, then reconnect."
+      );
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw new GoogleHealthClientError(
+        "identity-permission-denied",
+        "Google Health could not verify this account. Confirm the requested access was granted and reconnect."
+      );
+    }
+    throw new GoogleHealthClientError(
+      "identity-verification-failed",
+      "Google Health could not verify this account. Try connecting again later."
+    );
+  }
+
+  if (typeof result.healthUserId !== "string"
+    || !/^[A-Za-z0-9-]{1,63}$/.test(result.healthUserId)) {
+    throw new GoogleHealthClientError(
+      "identity-verification-failed",
+      "Google Health returned an invalid account identity."
+    );
+  }
+
+  return result;
+}
+
 export async function exchangeGoogleAuthorizationCode({
   code,
   clientId,

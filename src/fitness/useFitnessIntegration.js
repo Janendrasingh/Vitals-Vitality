@@ -167,6 +167,10 @@ export function useFitnessIntegration(uid) {
           syncStatus: authorizationResult === "denied" ? "denied" : "failed",
           error: authorizationResult === "denied"
             ? "Google Health access was not granted. No activity data was imported."
+            : authorizationResult === "not-linked"
+              ? "This Google Account is not linked to Google Health. Open the Google Health app, sign in with this account, finish setup or Fitbit migration, then connect again."
+              : authorizationResult === "permission-denied"
+                ? "Google Health could not verify this account. Confirm the requested access was granted, then connect again."
             : "Google Health could not be connected. Try again.",
         }));
       });
