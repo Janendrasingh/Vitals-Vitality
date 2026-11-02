@@ -163,11 +163,11 @@ service cloud.firestore {
           function validMeal(data) {
             return data.keys().hasAll([
                 'id', 'uid', 'date', 'name', 'calories', 'protein', 'carbs',
-                'fat', 'suggested', 'loggedAt'
+                  'fat', 'fiber', 'suggested', 'loggedAt'
               ])
               && data.keys().hasOnly([
                 'id', 'uid', 'date', 'name', 'calories', 'protein', 'carbs',
-                'fat', 'suggested', 'loggedAt'
+                  'fat', 'fiber', 'suggested', 'loggedAt'
               ])
               && data.id == mealId
               && data.uid == userId
@@ -181,6 +181,7 @@ service cloud.firestore {
               && (data.protein == null || (data.protein is number && data.protein >= 0 && data.protein <= 2000))
               && (data.carbs == null || (data.carbs is number && data.carbs >= 0 && data.carbs <= 2000))
               && (data.fat == null || (data.fat is number && data.fat >= 0 && data.fat <= 2000))
+              && (data.fiber == null || (data.fiber is number && data.fiber >= 0 && data.fiber <= 2000))
               && data.suggested is bool
               && data.loggedAt is number
               && data.loggedAt >= 0
@@ -190,7 +191,7 @@ service cloud.firestore {
           allow get, list: if signedInAs(userId);
           allow create, update: if signedInAs(userId)
             && validMeal(request.resource.data);
-          allow delete: if false;
+          allow delete: if signedInAs(userId);
         }
 
         match /manualWorkouts/{workoutId} {

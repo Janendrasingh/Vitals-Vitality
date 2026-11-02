@@ -52,6 +52,10 @@ function createMemoryFirestore() {
 
   const firestore = {
     collection: (parent, ...segments) => reference(parent, ...segments),
+    deleteDoc: async (target) => {
+      records.delete(target.path);
+      notify(target.path);
+    },
     doc: (parent, ...segments) => reference(parent, ...segments),
     getDoc: async (target) => makeSnapshot(target.path, records.get(target.path)),
     getDocs: async (target) => snapshotForCollection(target),
@@ -153,6 +157,7 @@ test("saves user-scoped entries, preserves cloud day values, and increments wate
     protein: 35,
     carbs: 50,
     fat: 18,
+    fiber: 8,
     time: 2000,
   });
 
@@ -161,6 +166,11 @@ test("saves user-scoped entries, preserves cloud day values, and increments wate
   assert.equal(day.steps, 1500);
   const mealRecord = [...records.entries()].find(([path]) => path.includes("/meals/"));
   assert.equal(mealRecord[1].uid, "user-a");
+  assert.equal(mealRecord[1].fiber, 8);
+
+  await repository.deleteDashboardMeal("user-a", "2026-10-30", mealRecord[1].id);
+  assert.equal(records.has(mealRecord[0]), false);
+  await assert.rejects(repository.deleteDashboardMeal("user-b", "2026-10-30", ""), /valid meal record/);
 });
 
 test("rejects missing users, invalid dates, and invalid activity data", async () => {

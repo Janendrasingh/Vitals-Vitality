@@ -73,7 +73,7 @@ When an authenticated user opens the dashboard, current-day meals, water, manual
 * `users/{uid}/dashboardDays/{YYYY-MM-DD}/manualWorkouts/{entryId}` for manually logged workouts.
 * `users/{uid}/weightEntries/{entryId}` for weight history.
 
-Stable IDs make retries idempotent. Existing Firestore entries are left intact; day-level water and steps preserve the greater local/cloud count, and water updates use a Firestore transaction. Dashboard snapshots provide cross-device updates. Local storage is retained as a fallback and migration source. If rules are not published or a write fails, the dashboard displays a cloud-sync error and keeps the local copy. Publish the updated rules before relying on cloud synchronization.
+Stable IDs make retries idempotent. Existing Firestore entries are left intact; day-level water and steps preserve the greater local/cloud count, and water updates use a Firestore transaction. Meal log removal deletes only that owner's meal record and updates the nutrition totals immediately. Dashboard snapshots provide cross-device updates. Local storage is retained as a fallback and migration source. If rules are not published or a write fails, the dashboard displays a cloud-sync error and keeps the local copy. Publish the updated rules before relying on cloud synchronization.
 
 ## 🎯 Project Objective
 
@@ -173,9 +173,9 @@ The dashboard estimates daily energy and macronutrient targets from the profile'
 
 These are estimates, not medical advice. Missing or unsupported profile values do not produce a target. Synced active calories and workouts inform meal-selection context only; they are not added to TDEE. Food intake shown in the dashboard is user-logged data, not a sensor measurement.
 
-Daily targets are stored separately from profile data at `users/{uid}/nutritionPlans/{YYYY-MM-DD}`. Firestore rules allow only the authenticated owner to read or write validated plan records.
+Daily targets are stored separately from profile data at `users/{uid}/nutritionPlans/{YYYY-MM-DD}`. Firestore rules allow only the authenticated owner to read or write validated plan records. Logged meal macros show consumed and remaining values when all entries include those values; incomplete manual logs are not treated as zero. Optional fibre is stored/displayed only when supplied by the user or a future verified source. No fibre target or nutrition value is invented. The Activity page shows a clearly labeled 10,000-step reference, not a personalized goal.
 
-Meal selection requires verified nutrition records, portion sizes, ingredients, allergen metadata, and source citations. The repository currently has no verified meal dataset configured, so the app intentionally displays meal slots without invented nutritional values. To enable recommendations, populate `src/nutrition/mealCatalog.js` with sourced records following the validator in `src/nutrition/mealRecommendations.js`; records without complete nutrition and source metadata are excluded.
+Meal selection requires verified nutrition records, portion sizes, ingredients, allergen metadata, and source citations. When a catalog is configured, candidates are ranked against the remaining calorie and macro estimates, dietary restrictions, allergies, and available activity context; a meal larger than the remaining calorie allowance is excluded. The repository currently has no verified meal dataset configured, so the app intentionally displays meal slots without invented nutritional values. To enable recommendations, populate `src/nutrition/mealCatalog.js` with sourced records following the validator in `src/nutrition/mealRecommendations.js`; records without complete nutrition and source metadata are excluded.
 
 Run the frontend checks from `Vitals and Vitality/`:
 

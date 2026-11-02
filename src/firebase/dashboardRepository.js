@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -67,6 +68,7 @@ function normalizeMeal(uid, date, entry) {
     protein: entry?.protein === null || entry?.protein === undefined ? null : Number(entry.protein),
     carbs: entry?.carbs === null || entry?.carbs === undefined ? null : Number(entry.carbs),
     fat: entry?.fat === null || entry?.fat === undefined ? null : Number(entry.fat),
+    fiber: entry?.fiber === null || entry?.fiber === undefined ? null : Number(entry.fiber),
     suggested: entry?.suggested === true,
     loggedAt: logTimestamp(entry),
   };
@@ -148,6 +150,16 @@ export function createDashboardRepository(database, firestore) {
     await ensureDay(uid, date);
     await firestore.setDoc(firestore.doc(getMealsReference(uid, date), meal.id), meal);
     return meal;
+  }
+
+  async function deleteDashboardMeal(uid, date, mealId) {
+    requireDatabase();
+    requireUid(uid);
+    requireDate(date);
+    if (typeof mealId !== "string" || !mealId.trim() || mealId.length > 200) {
+      throw new Error("A valid meal record is required.");
+    }
+    await firestore.deleteDoc(firestore.doc(getMealsReference(uid, date), mealId));
   }
 
   async function saveDashboardWorkout(uid, date, entry) {
@@ -308,6 +320,7 @@ export function createDashboardRepository(database, firestore) {
   return {
     addManualSteps,
     addWaterGlass,
+    deleteDashboardMeal,
     loadDashboardSnapshot,
     migrateLegacyDashboard,
     saveDashboardMeal,
@@ -328,6 +341,7 @@ function makeDashboardState(date, day, meals, workouts, weightEntries) {
         protein: meal.protein,
         carbs: meal.carbs,
         fat: meal.fat,
+        fiber: meal.fiber,
         suggested: meal.suggested,
         time: meal.loggedAt,
       })),
@@ -362,6 +376,9 @@ function validateMeal(meal) {
       throw new Error(`Meal ${field} must be a non-negative number.`);
     }
   }
+  if (meal.fiber !== null && (!Number.isFinite(meal.fiber) || meal.fiber < 0 || meal.fiber > 2000)) {
+    throw new Error("Meal fiber must be a non-negative number.");
+  }
 }
 
 function validateWorkout(workout) {
@@ -380,6 +397,7 @@ function validateWeight(entry) {
 
 const repository = createDashboardRepository(db, {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -392,6 +410,7 @@ const repository = createDashboardRepository(db, {
 export const {
   addManualSteps,
   addWaterGlass,
+  deleteDashboardMeal,
   loadDashboardSnapshot,
   migrateLegacyDashboard,
   saveDashboardMeal,

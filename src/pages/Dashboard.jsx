@@ -15,6 +15,7 @@ import {
   Plus,
   Settings,
   Sparkles,
+  Trash2,
   Utensils,
   Weight,
   X,
@@ -24,6 +25,7 @@ import {
   addManualSteps,
   addWaterGlass,
   createDashboardEntryId,
+  deleteDashboardMeal,
   migrateLegacyDashboard,
   saveDashboardMeal,
   saveDashboardWorkout,
@@ -58,6 +60,7 @@ const workoutOptions = [
   { id: "yoga", label: "Yoga / mobility", met: 3 },
   { id: "walking", label: "Walking", met: 3.5 },
 ];
+const DAILY_STEP_REFERENCE_GOAL = 10000;
 
 function getTodayKey() {
   const date = new Date();
@@ -175,14 +178,18 @@ function recommendationWorkoutType(activityType) {
   return "recovery";
 }
 
-function getMealSuggestions({ diets, allergies, activity, nutrition }) {
+function getMealSuggestions({ diets, allergies, activity, nutrition, remainingCalories, remainingMacros }) {
   const latestWorkout = activity.allWorkouts.at(-1);
   const result = recommendMeals({
     source: mealCatalog,
     calorieTarget: nutrition.calorieTarget,
+    remainingCalories,
     proteinTarget: nutrition.proteinTarget,
     carbohydrateTarget: nutrition.carbohydrateTarget,
     fatTarget: nutrition.fatTarget,
+    remainingProtein: remainingMacros.protein,
+    remainingCarbohydrates: remainingMacros.carbs,
+    remainingFat: remainingMacros.fat,
     diets,
     allergies,
     activity: {
@@ -190,14 +197,21 @@ function getMealSuggestions({ diets, allergies, activity, nutrition }) {
       latestWorkoutType: latestWorkout?.type,
     },
   });
+  const remaining = Number.isFinite(remainingCalories)
+    ? `Remaining against your estimated target: ${remainingCalories.toLocaleString()} kcal`
+      + (Number.isFinite(remainingMacros.protein) ? ` · ${remainingMacros.protein}g protein` : "")
+      + (Number.isFinite(remainingMacros.carbs) ? ` · ${remainingMacros.carbs}g carbohydrates` : "")
+      + (Number.isFinite(remainingMacros.fat) ? ` · ${remainingMacros.fat}g fat` : "")
+      + ". "
+    : "";
   return {
     ...result,
     title: "Today’s meal recommendations",
-    subtitle: latestWorkout
+    subtitle: `${remaining}${latestWorkout
       ? `Activity context includes your ${latestWorkout.label.toLowerCase()} session. Activity calories are not added to your calorie target.`
       : activity.stepsAvailable
         ? `Activity context includes ${activity.steps.toLocaleString()} steps. Activity calories are not added to your calorie target.`
-        : "No fitness activity is available today; your estimated calorie target is based on your selected usual activity level.",
+        : "No fitness activity is available today; your estimated calorie target is based on your selected usual activity level."}`,
   };
 }
 
@@ -206,7 +220,8 @@ function getMealCalories(meals) {
 }
 
 function getLoggedMacroTotal(meals, field) {
-  if (!meals.length || meals.some((meal) =>
+  if (!meals.length) return 0;
+  if (meals.some((meal) =>
     meal[field] === null || meal[field] === undefined || meal[field] === ""
       || !Number.isFinite(Number(meal[field]))
   )) {
@@ -222,6 +237,7 @@ function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
     protein: "",
     carbs: "",
     fat: "",
+    fiber: "",
     weight: currentWeight ? String(currentWeight) : "",
     type: "strength",
     minutes: "",
@@ -241,6 +257,7 @@ function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
         protein: values.protein === "" ? null : Number(values.protein),
         carbs: values.carbs === "" ? null : Number(values.carbs),
         fat: values.fat === "" ? null : Number(values.fat),
+        fiber: values.fiber === "" ? null : Number(values.fiber),
       });
     } else if (isWeight) {
       onSubmit({ weight: Number(values.weight) });
@@ -288,6 +305,7 @@ function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
                 <label className="dashboard-field">Protein (g)<input min="0" onChange={update("protein")} type="number" value={values.protein} /></label>
                 <label className="dashboard-field">Carbs (g)<input min="0" onChange={update("carbs")} type="number" value={values.carbs} /></label>
                 <label className="dashboard-field">Fat (g)<input min="0" onChange={update("fat")} type="number" value={values.fat} /></label>
+                <label className="dashboard-field">Fibre (g)<input min="0" onChange={update("fiber")} type="number" value={values.fiber} /></label>
               </div>
             </>
           ) : isWeight ? (
@@ -352,12 +370,31 @@ export default function Dashboard({
     protein: getLoggedMacroTotal(meals, "protein"),
     carbs: getLoggedMacroTotal(meals, "carbs"),
     fat: getLoggedMacroTotal(meals, "fat"),
+    fiber: getLoggedMacroTotal(meals, "fiber"),
+  };
+  const remainingMacros = {
+    protein: consumedMacros.protein === null || nutrition.proteinTarget === null
+      ? null
+      : Math.max(nutrition.proteinTarget - consumedMacros.protein, 0),
+    carbs: consumedMacros.carbs === null || nutrition.carbohydrateTarget === null
+      ? null
+      : Math.max(nutrition.carbohydrateTarget - consumedMacros.carbs, 0),
+    fat: consumedMacros.fat === null || nutrition.fatTarget === null
+      ? null
+      : Math.max(nutrition.fatTarget - consumedMacros.fat, 0),
   };
   const displayName = firstName(userData);
   const diets = (Array.isArray(userData?.diets) ? userData.diets : []).filter(Boolean);
   const allergies = [...(userData?.allergies || []), ...(userData?.customAllergies || [])].filter(Boolean);
   const activity = getActivitySummary(workouts, steps, fitness.daily, fitness.workouts);
-  const suggestions = getMealSuggestions({ diets, allergies, activity, nutrition });
+  const suggestions = getMealSuggestions({
+    diets,
+    allergies,
+    activity,
+    nutrition,
+    remainingCalories: caloriesLeft,
+    remainingMacros,
+  });
   const targetWeight = Number(userData?.targetWeight) || 0;
   const currentWeight = Number(userData?.weight) || 0;
   const today = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
@@ -541,6 +578,24 @@ export default function Dashboard({
     setNotice(`${meal.name} added to today's meal log.`);
   }
 
+  function removeMeal(meal) {
+    const date = getTodayKey();
+    setDashboardData((previous) => ({
+      ...previous,
+      meals: previous.meals.filter((entry) => entry.id !== meal.id),
+    }));
+    setNotice(`${meal.name} removed from today's meal log.`);
+    deleteDashboardMeal(userId, date, meal.id).catch((error) => {
+      setDashboardData((previous) => previous.meals.some((entry) => entry.id === meal.id)
+        ? previous
+        : {
+            ...previous,
+            meals: [...previous.meals, meal].sort((left, right) => left.time - right.time),
+          });
+      reportDashboardSaveError(error);
+    });
+  }
+
   function addWater() {
     setDashboardData((previous) => ({ ...previous, date: getTodayKey(), waterGlasses: Math.min(previous.waterGlasses + 1, 10) }));
     addWaterGlass(userId, getTodayKey()).catch(reportDashboardSaveError);
@@ -648,10 +703,12 @@ export default function Dashboard({
             activity={activity}
             addSuggestedMeal={addSuggestedMeal}
             addWater={addWater}
+            onRemoveMeal={removeMeal}
             caloriesLeft={caloriesLeft}
             calorieGoal={calorieGoal}
             calorieProgress={calorieProgress}
             consumedMacros={consumedMacros}
+            remainingMacros={remainingMacros}
             allergies={allergies}
             diets={diets}
             displayName={displayName}
@@ -673,6 +730,7 @@ export default function Dashboard({
             addSuggestedMeal={addSuggestedMeal}
             meals={meals}
             onLogMeal={() => setModal("meal")}
+            onRemoveMeal={removeMeal}
             suggestions={suggestions}
             calorieGoal={calorieGoal}
             consumed={consumed}
@@ -720,6 +778,7 @@ function PageHeader({ eyebrow, title, description, action }) {
 function DashboardHome({
   activity, addSuggestedMeal, addWater, caloriesLeft, calorieGoal, calorieProgress, consumedMacros,
   allergies, diets, displayName, fatGoal, meals, notice, onLogMeal, proteinGoal, suggestions, today, waterGlasses, carbsGoal,
+  remainingMacros, onRemoveMeal,
   nutrition, planSaveStatus,
 }) {
   return (
@@ -745,9 +804,10 @@ function DashboardHome({
           </div>
           <div className="dashboard-nutrients">
             <h2>Nutrient<br />Breakdown</h2>
-            <NutrientProgress label="Protein" current={consumedMacros.protein} target={proteinGoal} color="green" />
-            <NutrientProgress label="Carbs" current={consumedMacros.carbs} target={carbsGoal} color="orange" />
-            <NutrientProgress label="Fat" current={consumedMacros.fat} target={fatGoal} color="olive" />
+            <NutrientProgress label="Protein" current={consumedMacros.protein} remaining={remainingMacros.protein} target={proteinGoal} color="green" />
+            <NutrientProgress label="Carbs" current={consumedMacros.carbs} remaining={remainingMacros.carbs} target={carbsGoal} color="orange" />
+            <NutrientProgress label="Fat" current={consumedMacros.fat} remaining={remainingMacros.fat} target={fatGoal} color="olive" />
+            <NutrientProgress label="Fibre" current={consumedMacros.fiber} remaining={null} target={null} color="green" />
           </div>
         </article>
         <article className="dashboard-hydration-card">
@@ -779,7 +839,7 @@ function DashboardHome({
         </div>
         {meals.length ? (
           <div className="dashboard-meal-grid">
-            {meals.map((meal) => <MealCard key={meal.id} meal={meal} />)}
+            {meals.map((meal) => <MealCard key={meal.id} meal={meal} onRemove={onRemoveMeal} />)}
             <button className="dashboard-add-meal-card" onClick={onLogMeal} type="button">
               <span className="dashboard-add-meal-icon"><Utensils size={20} /></span><strong>Log Next Meal</strong><span>Add a meal or snack</span><span className="dashboard-add-meal-action"><Plus size={15} /> Add meal</span>
             </button>
@@ -860,6 +920,7 @@ function MealRecommendationCard({ onAddMeal, slot }) {
         <span>{meal.fat}g fat</span>
       </div>
       <p><strong>Ingredients:</strong> {ingredients.join(", ")}</p>
+      {Number.isFinite(meal.fiber) && <p>{meal.fiber}g fibre</p>}
       {meal.preparationInstructions && <p><strong>Preparation:</strong> {meal.preparationInstructions}</p>}
       <p className="dashboard-food-source">
         Nutrition source: <a href={meal.sourceUrl} rel="noreferrer" target="_blank">{meal.sourceName}</a>
@@ -871,20 +932,32 @@ function MealRecommendationCard({ onAddMeal, slot }) {
   );
 }
 
-function MealCard({ meal }) {
+function MealCard({ meal, onRemove }) {
   const macroLabel = (value) => value === null || value === undefined ? "--" : value;
   return (
     <article className="dashboard-meal-card">
       <div className="dashboard-meal-image dashboard-meal-image-empty"><span>{meal.suggested ? "Suggested" : "Logged today"}</span></div>
       <div className="dashboard-meal-details">
-        <div><h3>{meal.name}</h3><p>P {macroLabel(meal.protein)}g · C {macroLabel(meal.carbs)}g · F {macroLabel(meal.fat)}g</p></div>
-        <strong>{meal.calories}<span>kcal</span></strong>
+        <div><h3>{meal.name}</h3><p>P {macroLabel(meal.protein)}g · C {macroLabel(meal.carbs)}g · F {macroLabel(meal.fat)}g{meal.fiber === null || meal.fiber === undefined ? "" : ` · Fibre ${meal.fiber}g`}</p></div>
+        <div className="dashboard-meal-actions">
+          <strong>{meal.calories}<span>kcal</span></strong>
+          {onRemove && (
+            <button
+              aria-label={`Remove ${meal.name}`}
+              className="dashboard-meal-remove"
+              onClick={() => onRemove(meal)}
+              type="button"
+            >
+              <Trash2 aria-hidden="true" size={15} />
+            </button>
+          )}
+        </div>
       </div>
     </article>
   );
 }
 
-function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, suggestions, calorieGoal, consumed }) {
+function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, onRemoveMeal, suggestions, calorieGoal, consumed }) {
   return (
     <>
       <PageHeader
@@ -905,7 +978,9 @@ function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, suggestions, calo
       </section>
       <section className="dashboard-data-section">
         <SectionHeading eyebrow={`${meals.length} meals`} title="Today&apos;s log" />
-        {meals.length ? <div className="dashboard-meal-grid">{meals.map((meal) => <MealCard key={meal.id} meal={meal} />)}</div> : <EmptyState text="Your meal log is empty. Add a recommendation or log your own meal." action={onLogMeal} actionLabel="Log a meal" />}
+        {meals.length
+          ? <div className="dashboard-meal-grid">{meals.map((meal) => <MealCard key={meal.id} meal={meal} onRemove={onRemoveMeal} />)}</div>
+          : <EmptyState text="Your meal log is empty. Add a recommendation or log your own meal." action={onLogMeal} actionLabel="Log a meal" />}
       </section>
     </>
   );
@@ -956,7 +1031,12 @@ function ActivityPage({ activity, fitness, onLogWorkout, workouts }) {
     <>
       <PageHeader action={<button className="dashboard-primary-button" onClick={onLogWorkout} type="button"><Plus size={17} /> Log activity</button>} description="Imported activity and your manual logs can inform today's meal suggestions. Provider data is shown only when the connected source supplies it." eyebrow="Movement & recovery" title="Activity" />
       <div className="dashboard-stat-strip">
-        <StatCard label={activity.stepsSource === "imported" ? "Imported steps today" : activity.stepsSource === "manual" ? "Manual steps today" : "Steps today"} value={activity.stepsAvailable ? activity.steps.toLocaleString() : "--"} />
+        <StatCard
+          label={activity.stepsAvailable ? `Steps / ${DAILY_STEP_REFERENCE_GOAL.toLocaleString()} reference` : "Steps / reference goal"}
+          value={activity.stepsAvailable
+            ? `${activity.steps.toLocaleString()} / ${DAILY_STEP_REFERENCE_GOAL.toLocaleString()}`
+            : "--"}
+        />
         <StatCard label="Active calories (imported)" value={displayMetric(daily?.activeCaloriesKcal, " kcal")} />
         <StatCard label="Workout duration" value={daily?.workoutDurationMinutes !== null && daily?.workoutDurationMinutes !== undefined ? `${daily.workoutDurationMinutes} min` : "--"} />
       </div>
@@ -1076,16 +1156,26 @@ function SectionHeading({ eyebrow, title }) {
   return <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">{eyebrow}</p><h2>{title}</h2></div></div>;
 }
 
-function NutrientProgress({ label, current, target, color }) {
+function NutrientProgress({ label, current, remaining, target, color }) {
   const progress = target && current !== null ? Math.min((current / target) * 100, 100) : 0;
   const currentLabel = current === null ? "--" : current;
   const targetLabel = target === null ? "--" : target;
   return (
     <div className="dashboard-nutrient">
-      <div className="dashboard-nutrient-label"><span>{label}</span><strong>{currentLabel}g / {targetLabel}g</strong></div>
+      <div className="dashboard-nutrient-label">
+        <span>{label}</span>
+        <strong>{currentLabel}g / {targetLabel}g</strong>
+      </div>
       <div aria-label={`${label} ${currentLabel} of ${targetLabel} grams`} className="dashboard-nutrient-track" role="img">
         <span className={`dashboard-nutrient-fill ${color}`} style={{ width: `${progress}%` }} />
       </div>
+      <p className="dashboard-nutrient-remaining">
+        {target === null
+          ? "Recorded intake only; no target configured"
+          : remaining === null
+            ? "Remaining unavailable until logged macros are complete"
+            : `${remaining}g remaining`}
+      </p>
     </div>
   );
 }

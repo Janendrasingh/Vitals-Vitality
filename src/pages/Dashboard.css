@@ -740,6 +740,13 @@
   background: #e9eeeb;
 }
 
+.dashboard-nutrient-remaining {
+  margin: 4px 0 0;
+  color: #64736c;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
 .dashboard-nutrient-fill {
   display: block;
   height: 100%;
@@ -1156,18 +1163,43 @@
   line-height: 1.4;
 }
 
-.dashboard-meal-details > strong {
+.dashboard-meal-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.dashboard-meal-actions > strong {
   flex: 0 0 auto;
   color: #293633;
   font-size: 12px;
 }
 
-.dashboard-meal-details > strong span {
+.dashboard-meal-actions > strong span {
   display: block;
   margin-top: 2px;
   color: #7d8783;
   font-size: 10px;
   font-weight: 500;
+}
+
+.dashboard-meal-remove {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid #e8eeeb;
+  border-radius: 9px;
+  color: #697670;
+  background: #fff;
+  cursor: pointer;
+}
+
+.dashboard-meal-remove:hover {
+  border-color: #efcaca;
+  color: #a63d3d;
+  background: #fff8f8;
 }
 
 .dashboard-add-meal-card {

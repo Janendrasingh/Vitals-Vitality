@@ -77,12 +77,22 @@ function satisfiesPreferences(meal, diets, preferences) {
   return meetsDiets && meetsFoodPreferences;
 }
 
+function isValidSourceUrl(value) {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && Boolean(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function isVerifiedMeal(meal) {
-  const sourceUrlIsValid = typeof meal?.sourceUrl === "string"
-    && /^https:\/\/\S+$/i.test(meal.sourceUrl);
   return meal
     && typeof meal.id === "string"
+    && Boolean(meal.id.trim())
     && typeof meal.name === "string"
+    && Boolean(meal.name.trim())
     && mealSlots.some((slot) => slot.id === normalize(meal.mealType))
     && Number.isFinite(meal.calories) && meal.calories > 0
     && Number.isFinite(meal.protein) && meal.protein >= 0
@@ -102,7 +112,7 @@ function isVerifiedMeal(meal) {
     && Array.isArray(meal.tags)
     && meal.tags.every((tag) => typeof tag === "string")
     && typeof meal.sourceName === "string" && Boolean(meal.sourceName.trim())
-    && sourceUrlIsValid;
+    && isValidSourceUrl(meal.sourceUrl);
 }
 
 function activityRank(meal, activity) {
@@ -116,9 +126,13 @@ function activityRank(meal, activity) {
 export function recommendMeals({
   source,
   calorieTarget,
+  remainingCalories = calorieTarget,
   proteinTarget,
   carbohydrateTarget,
   fatTarget,
+  remainingProtein = proteinTarget,
+  remainingCarbohydrates = carbohydrateTarget,
+  remainingFat = fatTarget,
   diets = [],
   allergies = [],
   preferences = [],
@@ -132,6 +146,14 @@ export function recommendMeals({
     };
   }
 
+  if (!Number.isFinite(remainingCalories) || remainingCalories <= 0) {
+    return {
+      status: "unavailable",
+      reason: "Your estimated calorie target has been reached; no further meal portions are recommended today.",
+      meals: emptySlots(),
+    };
+  }
+
   if (!source || !Array.isArray(source.meals) || source.meals.length === 0) {
     return {
       status: "unavailable",
@@ -140,45 +162,83 @@ export function recommendMeals({
     };
   }
 
-  const verifiedMeals = source.meals.filter(isVerifiedMeal);
+  const validMeals = source.meals.filter(isVerifiedMeal);
+  const idCounts = new Map();
+  validMeals.forEach(({ id }) => idCounts.set(id, (idCounts.get(id) || 0) + 1));
+  const verifiedMeals = validMeals.filter((meal) => idCounts.get(meal.id) === 1);
   const eligibleMeals = verifiedMeals.filter((meal) =>
     matchesAllergies(meal, allergies)
       && satisfiesPreferences(meal, diets, preferences)
   );
 
+  let caloriesLeft = remainingCalories;
+  let proteinLeft = Number.isFinite(remainingProtein) ? remainingProtein : Infinity;
+  let carbohydratesLeft = Number.isFinite(remainingCarbohydrates) ? remainingCarbohydrates : Infinity;
+  let fatLeft = Number.isFinite(remainingFat) ? remainingFat : Infinity;
+
   const meals = mealSlots.map((slot) => {
+    if (caloriesLeft <= 0) {
+      return { mealType: slot.id, label: slot.label, recommendation: null };
+    }
+
+    const calorieAllocation = caloriesLeft * slot.calorieShare;
+    const proteinAllocation = Number.isFinite(proteinLeft)
+      ? proteinLeft * slot.calorieShare
+      : null;
+    const carbohydrateAllocation = Number.isFinite(carbohydratesLeft)
+      ? carbohydratesLeft * slot.calorieShare
+      : null;
+    const fatAllocation = Number.isFinite(fatLeft)
+      ? fatLeft * slot.calorieShare
+      : null;
     const candidates = eligibleMeals
       .filter((meal) => normalize(meal.mealType) === slot.id)
+      .filter((meal) =>
+        meal.calories <= caloriesLeft
+        && meal.protein <= proteinLeft
+        && meal.carbohydrates <= carbohydratesLeft
+        && meal.fat <= fatLeft
+      )
       .map((meal) => ({
         meal,
-        score: Math.abs(meal.calories - (calorieTarget * slot.calorieShare))
-          / Math.max(calorieTarget * slot.calorieShare, 1)
-          + (Number.isFinite(proteinTarget)
-            ? Math.abs(meal.protein - (proteinTarget * slot.calorieShare)) / Math.max(proteinTarget * slot.calorieShare, 1)
+        score: Math.abs(meal.calories - calorieAllocation)
+          / Math.max(calorieAllocation, 1)
+          + (proteinAllocation !== null
+            ? Math.abs(meal.protein - proteinAllocation) / Math.max(proteinAllocation, 1)
             : 0)
-          + (Number.isFinite(carbohydrateTarget)
-            ? Math.abs(meal.carbohydrates - (carbohydrateTarget * slot.calorieShare)) / Math.max(carbohydrateTarget * slot.calorieShare, 1)
+          + (carbohydrateAllocation !== null
+            ? Math.abs(meal.carbohydrates - carbohydrateAllocation) / Math.max(carbohydrateAllocation, 1)
             : 0)
-          + (Number.isFinite(fatTarget)
-            ? Math.abs(meal.fat - (fatTarget * slot.calorieShare)) / Math.max(fatTarget * slot.calorieShare, 1)
+          + (fatAllocation !== null
+            ? Math.abs(meal.fat - fatAllocation) / Math.max(fatAllocation, 1)
             : 0)
           - (activityRank(meal, activity) * 0.1),
       }))
       .sort((left, right) => left.score - right.score);
 
+    const recommendation = candidates[0]?.meal || null;
+    if (recommendation) {
+      caloriesLeft -= recommendation.calories;
+      proteinLeft -= recommendation.protein;
+      carbohydratesLeft -= recommendation.carbohydrates;
+      fatLeft -= recommendation.fat;
+    }
+
     return {
       mealType: slot.id,
       label: slot.label,
-      recommendation: candidates[0]?.meal || null,
+      recommendation,
     };
   });
 
   if (!meals.some((slot) => slot.recommendation)) {
     return {
       status: "unavailable",
-      reason: verifiedMeals.length
-        ? "No verified meals match your selected diet and allergy restrictions."
-        : "The configured food source has no complete, verified nutrition records.",
+      reason: verifiedMeals.length === 0
+        ? "The configured food source has no complete, verified nutrition records."
+        : eligibleMeals.length === 0
+          ? "No verified meals match your selected diet and allergy restrictions."
+          : "No verified meal portions fit your remaining calorie and macronutrient budget.",
       meals,
     };
   }
