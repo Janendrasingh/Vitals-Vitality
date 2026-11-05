@@ -9,13 +9,13 @@ service cloud.firestore {
     function validProfile(data) {
       return data.keys().hasAll([
           'uid', 'email', 'fullName', 'age', 'weight', 'height', 'gender',
-          'activity', 'goal', 'diets', 'allergies', 'customAllergies',
+          'activity', 'goal', 'diets', 'foodPreferences', 'allergies', 'customAllergies',
           'targetWeight', 'lifestyleGoal', 'activityScore', 'typicalDay',
           'onboardingComplete', 'createdAt', 'updatedAt'
         ])
         && data.keys().hasOnly([
           'uid', 'email', 'fullName', 'age', 'weight', 'height', 'gender',
-          'activity', 'goal', 'diets', 'allergies', 'customAllergies',
+          'activity', 'goal', 'diets', 'foodPreferences', 'allergies', 'customAllergies',
           'targetWeight', 'lifestyleGoal', 'activityScore', 'typicalDay',
           'onboardingComplete', 'createdAt', 'updatedAt'
         ])
@@ -38,6 +38,8 @@ service cloud.firestore {
         && data.goal.size() <= 100
         && data.diets is list
         && data.diets.size() <= 30
+        && data.foodPreferences is list
+        && data.foodPreferences.size() <= 30
         && data.allergies is list
         && data.allergies.size() <= 30
         && data.customAllergies is list

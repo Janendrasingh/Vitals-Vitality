@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createMealCatalog } from "./mealCatalog.js";
 import { recommendMeals } from "./mealRecommendations.js";
 
 const verifiedMeal = {
@@ -258,6 +259,86 @@ test("honors matching dietary tags and selected food preferences", () => {
 
   assert.equal(result.status, "ready");
   assert.equal(result.meals[0].recommendation, verifiedMeal);
+});
+
+test("recommends nutrition calculated from cited ingredients within profile and preference filters", () => {
+  const ingredient = {
+    id: "fixture-lentils",
+    name: "Test lentils",
+    category: "pulses-and-legumes",
+    preparationState: "dry",
+    quantityBasis: "edible-portion",
+    nutritionPer100g: { calories: 300, protein: 24, carbohydrates: 50, fat: 2, fibre: 10 },
+    source: {
+      sourceName: "Synthetic test fixture",
+      sourceReference: "fixture:lentils",
+      sourceUrl: "https://example.test/fixture/lentils",
+    },
+    verificationStatus: "verified",
+  };
+  const recipe = {
+    id: "fixture-lentil-meal",
+    name: "Test lentil meal",
+    mealCategory: "breakfast",
+    ingredients: [{
+      ingredientId: ingredient.id,
+      quantityGrams: 100,
+      preparationState: ingredient.preparationState,
+      quantityBasis: ingredient.quantityBasis,
+      quantityPrecision: "exact",
+      ingredientMatchStatus: "verified",
+    }],
+    servings: 1,
+    servingDescription: "Synthetic test portion",
+    servingCountPrecision: "verified",
+    cookingMethod: "Test fixture only.",
+    preparationInstructions: ["Test fixture only."],
+    preparationAssumptions: ["Synthetic test data only."],
+    sourceIngredients: ["100 g test lentils"],
+    sourceIngredientCoverage: "complete",
+    unmappedIngredients: [],
+    dietaryTags: ["vegan"],
+    dietaryClassificationStatus: "verified",
+    allergens: [],
+    verificationStatus: "verified",
+    nutritionCoverage: "complete",
+    allergenInformationStatus: "complete",
+    verificationEvidence: Object.fromEntries([
+      "composition",
+      "quantities",
+      "preparation",
+      "yield",
+      "dietaryClassification",
+      "allergens",
+    ].map((key) => [key, {
+      status: "verified",
+      sourceReference: `fixture:${key}`,
+      sourceUrl: "https://example.test/fixture/recipe",
+    }])),
+    provenance: {
+      sourceName: "Synthetic test fixture",
+      sourceReference: "fixture:recipe",
+      sourceUrl: "https://example.test/fixture/recipe",
+    },
+  };
+  const catalog = createMealCatalog([recipe], [ingredient]);
+  const result = recommendMeals({
+    source: catalog,
+    calorieTarget: 2000,
+    proteinTarget: 100,
+    remainingProtein: 100,
+    carbohydrateTarget: 200,
+    remainingCarbohydrates: 200,
+    fatTarget: 50,
+    remainingFat: 50,
+    diets: ["Vegan"],
+    allergies: ["dairy"],
+    preferences: ["pulses and legumes"],
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.meals[0].recommendation.nutritionPerServing.calories, 300);
+  assert.equal(result.meals[0].recommendation.protein, 24);
 });
 
 test("excludes meals declaring a requested allergen", () => {

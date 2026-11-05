@@ -34,6 +34,11 @@ import {
 } from "../firebase/dashboardRepository";
 import { useFitnessIntegration } from "../fitness/useFitnessIntegration";
 import { calculateNutritionTargets } from "../nutrition/nutritionCalculator";
+import {
+  calculateMealNutrition,
+  nutritionNutrientLabels,
+} from "../nutrition/database/nutritionCalculator";
+import { ingredientCategories, ingredients } from "../nutrition/database/ingredients";
 import { mealCatalog } from "../nutrition/mealCatalog";
 import { recommendMeals } from "../nutrition/mealRecommendations";
 import "./Dashboard.css";
@@ -61,6 +66,13 @@ const workoutOptions = [
   { id: "walking", label: "Walking", met: 3.5 },
 ];
 const DAILY_STEP_REFERENCE_GOAL = 10000;
+
+function formatIngredientCategory(category) {
+  return category
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
 
 function getTodayKey() {
   const date = new Date();
@@ -178,7 +190,7 @@ function recommendationWorkoutType(activityType) {
   return "recovery";
 }
 
-function getMealSuggestions({ diets, allergies, activity, nutrition, remainingCalories, remainingMacros }) {
+function getMealSuggestions({ diets, allergies, preferences, activity, nutrition, remainingCalories, remainingMacros }) {
   const latestWorkout = activity.allWorkouts.at(-1);
   const result = recommendMeals({
     source: mealCatalog,
@@ -192,6 +204,7 @@ function getMealSuggestions({ diets, allergies, activity, nutrition, remainingCa
     remainingFat: remainingMacros.fat,
     diets,
     allergies,
+    preferences,
     activity: {
       intensity: activity.intensity,
       latestWorkoutType: latestWorkout?.type,
@@ -243,14 +256,57 @@ function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
     minutes: "",
     steps: "",
   });
+  const [ingredientRows, setIngredientRows] = useState([]);
+  const [mealFormError, setMealFormError] = useState("");
   const isMeal = mode === "meal";
   const isWeight = mode === "weight";
   const title = isMeal ? "Log a meal" : isWeight ? "Log your weight" : "Log activity";
   const update = (field) => (event) => setValues((previous) => ({ ...previous, [field]: event.target.value }));
+  const mealCalculation = useMemo(() => {
+    const enteredIngredients = ingredientRows
+      .filter((row) => row.ingredientId || row.quantityGrams !== "")
+      .map((row) => ({
+        ingredientId: row.ingredientId,
+        quantityGrams: row.quantityGrams === "" ? Number.NaN : Number(row.quantityGrams),
+      }));
+    return enteredIngredients.length
+      ? calculateMealNutrition(enteredIngredients, ingredients)
+      : null;
+  }, [ingredientRows]);
+
+  function updateIngredientRow(index, field, value) {
+    setIngredientRows((previous) => previous.map((row, rowIndex) =>
+      rowIndex === index ? { ...row, [field]: value } : row
+    ));
+    setMealFormError("");
+  }
+
+  function addIngredientRow() {
+    setIngredientRows((previous) => [...previous, { ingredientId: "", quantityGrams: "" }]);
+  }
 
   function handleSubmit(event) {
     event.preventDefault();
     if (isMeal) {
+      if (mealCalculation) {
+        if (!mealCalculation.available) {
+          setMealFormError(mealCalculation.errors.join(" "));
+          return;
+        }
+        if (!mealCalculation.verified) {
+          setMealFormError("The selected ingredient data is not verified, so it cannot be saved as a calculated meal.");
+          return;
+        }
+        onSubmit({
+          name: values.name.trim() || "Calculated ingredient meal",
+          calories: mealCalculation.perServing.calories,
+          protein: mealCalculation.perServing.protein,
+          carbs: mealCalculation.perServing.carbohydrates,
+          fat: mealCalculation.perServing.fat,
+          fiber: mealCalculation.perServing.fibre,
+        });
+        return;
+      }
       onSubmit({
         name: values.name.trim(),
         calories: Number(values.calories),
@@ -298,15 +354,119 @@ function DashboardModal({ mode, onClose, onSubmit, currentWeight }) {
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           {isMeal ? (
             <>
-              <label className="dashboard-field">Meal name<input autoFocus onChange={update("name")} required value={values.name} /></label>
-              <label className="dashboard-field">Calories<input min="1" onChange={update("calories")} required type="number" value={values.calories} /></label>
-              <p className="dashboard-modal-hint">Add macros if you know them; totals use only values you enter.</p>
+              <label className="dashboard-field">Meal name<input autoFocus onChange={update("name")} required={ingredientRows.length === 0} value={values.name} /></label>
+              <label className="dashboard-field">Calories<input disabled={ingredientRows.length > 0} min="1" onChange={update("calories")} required={ingredientRows.length === 0} type="number" value={values.calories} /></label>
+              <p className="dashboard-modal-hint">Enter nutrition manually, or calculate it from cited ingredient records below.</p>
               <div className="dashboard-macro-inputs">
-                <label className="dashboard-field">Protein (g)<input min="0" onChange={update("protein")} type="number" value={values.protein} /></label>
-                <label className="dashboard-field">Carbs (g)<input min="0" onChange={update("carbs")} type="number" value={values.carbs} /></label>
-                <label className="dashboard-field">Fat (g)<input min="0" onChange={update("fat")} type="number" value={values.fat} /></label>
-                <label className="dashboard-field">Fibre (g)<input min="0" onChange={update("fiber")} type="number" value={values.fiber} /></label>
+                <label className="dashboard-field">Protein (g)<input disabled={ingredientRows.length > 0} min="0" onChange={update("protein")} type="number" value={values.protein} /></label>
+                <label className="dashboard-field">Carbs (g)<input disabled={ingredientRows.length > 0} min="0" onChange={update("carbs")} type="number" value={values.carbs} /></label>
+                <label className="dashboard-field">Fat (g)<input disabled={ingredientRows.length > 0} min="0" onChange={update("fat")} type="number" value={values.fat} /></label>
+                <label className="dashboard-field">Fibre (g)<input disabled={ingredientRows.length > 0} min="0" onChange={update("fiber")} type="number" value={values.fiber} /></label>
               </div>
+              <section aria-label="Calculate nutrition from ingredients" className="space-y-3 rounded-xl border border-slate-200 p-4">
+                <div>
+                  <h3 className="font-semibold text-slate-900">Calculate from ingredients</h3>
+                  <p className="mt-1 text-xs text-slate-600">Enter grams in the same preparation state shown for each ingredient. No cooking-yield adjustment is assumed.</p>
+                </div>
+                {ingredientRows.map((row, index) => {
+                  const selectedIngredient = ingredients.find((ingredient) => ingredient.id === row.ingredientId);
+                  return (
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_130px_auto]" key={`ingredient-${index}`}>
+                      <label className="dashboard-field">
+                        Ingredient
+                        <select
+                          onChange={(event) => updateIngredientRow(index, "ingredientId", event.target.value)}
+                          required
+                          value={row.ingredientId}
+                        >
+                          <option value="">Select an ingredient</option>
+                          {ingredientCategories.map((category) => (
+                            <optgroup key={category} label={formatIngredientCategory(category)}>
+                              {ingredients
+                                .filter((ingredient) =>
+                                  ingredient.category === category
+                                  && !ingredientRows.some((other, otherIndex) =>
+                                    otherIndex !== index && other.ingredientId === ingredient.id
+                                  )
+                                )
+                                .map((ingredient) => (
+                                  <option key={ingredient.id} value={ingredient.id}>
+                                    {ingredient.name} ({ingredient.preparationState})
+                                  </option>
+                                ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="dashboard-field">
+                        Quantity (g)
+                        <input
+                          min="0.1"
+                          onChange={(event) => updateIngredientRow(index, "quantityGrams", event.target.value)}
+                          required
+                          step="0.1"
+                          type="number"
+                          value={row.quantityGrams}
+                        />
+                      </label>
+                      <button
+                        aria-label={`Remove ingredient ${index + 1}`}
+                        className="dashboard-icon-button self-end"
+                        onClick={() => {
+                          setIngredientRows((previous) => previous.filter((_, rowIndex) => rowIndex !== index));
+                          setMealFormError("");
+                        }}
+                        type="button"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                      {selectedIngredient && (
+                        <p className="text-xs text-slate-500 sm:col-span-2">
+                          Source basis: {selectedIngredient.quantityBasis}. Nutrients are per 100 g.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+                <button className="dashboard-secondary-button" onClick={addIngredientRow} type="button">
+                  <Plus size={15} /> Add ingredient
+                </button>
+                {mealCalculation && (
+                  <div aria-live="polite" className="rounded-lg bg-green-50 p-3 text-sm text-slate-700">
+                    {mealCalculation.available ? (
+                      <>
+                        <p className="font-semibold text-slate-900">
+                          {mealCalculation.verified ? "Calculated from verified ingredient records" : "Calculated values include unverified data"}
+                        </p>
+                        <p className="mt-1">
+                          {nutritionNutrientLabels.calories}: {mealCalculation.perServing.calories} ·
+                          {" "}{nutritionNutrientLabels.protein}: {mealCalculation.perServing.protein} ·
+                          {" "}{nutritionNutrientLabels.carbohydrates}: {mealCalculation.perServing.carbohydrates} ·
+                          {" "}{nutritionNutrientLabels.fat}: {mealCalculation.perServing.fat} ·
+                          {" "}{nutritionNutrientLabels.fibre}: {mealCalculation.perServing.fibre}
+                        </p>
+                        <details className="mt-2">
+                          <summary className="cursor-pointer font-medium">Other available nutrients</summary>
+                          <dl className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            {Object.entries(mealCalculation.perServing)
+                              .filter(([key]) => !["calories", "protein", "carbohydrates", "fat", "fibre"].includes(key))
+                              .map(([key, value]) => (
+                                <div key={key}>
+                                  <dt>{nutritionNutrientLabels[key] || key}</dt>
+                                  <dd>{value === null ? "Unavailable from one or more ingredient sources" : value}</dd>
+                                </div>
+                              ))}
+                          </dl>
+                        </details>
+                        {mealCalculation.warnings.map((warning) => <p className="mt-2 text-xs" key={warning}>{warning}</p>)}
+                      </>
+                    ) : (
+                      <p role="alert">{mealCalculation.errors.join(" ")}</p>
+                    )}
+                  </div>
+                )}
+              </section>
+              {mealFormError && <p aria-live="assertive" className="text-sm font-medium text-red-700" role="alert">{mealFormError}</p>}
             </>
           ) : isWeight ? (
             <label className="dashboard-field">Weight (kg)<input autoFocus min="1" onChange={update("weight")} required step="0.1" type="number" value={values.weight} /></label>
@@ -386,10 +546,12 @@ export default function Dashboard({
   const displayName = firstName(userData);
   const diets = (Array.isArray(userData?.diets) ? userData.diets : []).filter(Boolean);
   const allergies = [...(userData?.allergies || []), ...(userData?.customAllergies || [])].filter(Boolean);
+  const foodPreferences = (Array.isArray(userData?.foodPreferences) ? userData.foodPreferences : []).filter(Boolean);
   const activity = getActivitySummary(workouts, steps, fitness.daily, fitness.workouts);
   const suggestions = getMealSuggestions({
     diets,
     allergies,
+    preferences: foodPreferences,
     activity,
     nutrition,
     remainingCalories: caloriesLeft,
@@ -711,6 +873,7 @@ export default function Dashboard({
             remainingMacros={remainingMacros}
             allergies={allergies}
             diets={diets}
+            foodPreferences={foodPreferences}
             displayName={displayName}
             fatGoal={fatGoal}
             meals={meals}
@@ -736,7 +899,7 @@ export default function Dashboard({
             consumed={consumed}
           />
         )}
-        {view === "recipes" && <RecipesPage onAddMeal={addSuggestedMeal} suggestions={suggestions} />}
+        {view === "recipes" && <RecipesPage catalog={mealCatalog} onAddMeal={addSuggestedMeal} suggestions={suggestions} />}
         {view === "activity" && (
           <ActivityPage
             activity={activity}
@@ -777,7 +940,7 @@ function PageHeader({ eyebrow, title, description, action }) {
 
 function DashboardHome({
   activity, addSuggestedMeal, addWater, caloriesLeft, calorieGoal, calorieProgress, consumedMacros,
-  allergies, diets, displayName, fatGoal, meals, notice, onLogMeal, proteinGoal, suggestions, today, waterGlasses, carbsGoal,
+  allergies, diets, foodPreferences, displayName, fatGoal, meals, notice, onLogMeal, proteinGoal, suggestions, today, waterGlasses, carbsGoal,
   remainingMacros, onRemoveMeal,
   nutrition, planSaveStatus,
 }) {
@@ -865,8 +1028,8 @@ function DashboardHome({
         {notice && <p aria-live="polite" className="dashboard-feedback">{notice}</p>}
         <p className="dashboard-filter-note">
           <Leaf size={14} />
-          {diets.length || allergies.length
-            ? `Diet and allergy preferences: ${[...diets, ...allergies].join(", ")}.`
+          {diets.length || foodPreferences.length || allergies.length
+            ? `Diet, food, and allergy preferences: ${[...diets, ...foodPreferences, ...allergies].join(", ")}.`
             : "Set dietary preferences to filter verified food data when a catalog is configured."}
           {" "}Always check ingredient and allergen labels.
         </p>
@@ -986,18 +1149,143 @@ function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, onRemoveMeal, sug
   );
 }
 
-function RecipesPage({ onAddMeal, suggestions }) {
+function RecipesPage({ catalog, onAddMeal, suggestions }) {
   return (
     <>
-      <PageHeader description="Only recipes with a verified nutrition source are shown. Diet and allergy preferences are applied when filtering." eyebrow="Cook something good" title="Recipes" />
+      <PageHeader description="Browse source-cited Indian recipes. Nutrition estimates are calculated from the mapped ingredients only; partial or unverified recipes are not used for recommendations." eyebrow="Cook something good" title="Recipes" />
       <section className="dashboard-data-section">
         <div className="dashboard-section-heading">
-          <div><p className="dashboard-eyebrow">Personalized picks</p><h2>Recipes for your preferences</h2></div>
-          <span className="dashboard-meal-summary">{suggestions.meals.filter((slot) => slot.recommendation).length} recipes</span>
+          <div><p className="dashboard-eyebrow">Recipe collection</p><h2>Indian recipes</h2></div>
+          <span className="dashboard-meal-summary">{catalog.recipes.length} recipes</span>
         </div>
-        <MealRecommendationList onAddMeal={onAddMeal} suggestions={suggestions} />
+        {catalog.unavailableReason && <p className="dashboard-recipe-notice">{catalog.unavailableReason} Personalized recommendations remain limited to fully verified recipes.</p>}
+        {catalog.recipes.length
+          ? <div className="dashboard-recipe-grid">{catalog.recipes.map((recipe) => <RecipeCard key={recipe.id} recipe={recipe} />)}</div>
+          : <p className="dashboard-recipe-notice">No recipes are currently available to browse.</p>}
+        {suggestions.meals.some((slot) => slot.recommendation) && (
+          <div className="dashboard-data-section">
+            <SectionHeading eyebrow="Verified picks" title="Recommended for you" />
+            <MealRecommendationList onAddMeal={onAddMeal} suggestions={suggestions} />
+          </div>
+        )}
       </section>
     </>
+  );
+}
+
+function RecipeCard({ recipe }) {
+  const nutrition = recipe.nutrition.available ? recipe.nutrition.perServing : null;
+  const statusLabel = recipe.recommendable
+    ? "Verified"
+    : recipe.nutrition.available
+      ? "Estimated / incomplete"
+      : "Nutrition unavailable";
+  const micronutrients = nutrition
+    ? Object.entries(nutrition).filter(([key, value]) =>
+      Number.isFinite(value) && !["calories", "protein", "carbohydrates", "fat", "fibre"].includes(key)
+    )
+    : [];
+  const missingNutrients = [
+    ...(recipe.nutrition.missingNutrients ?? []),
+    ...Object.entries(nutrition ?? {})
+      .filter(([, value]) => value === null)
+      .map(([key]) => key),
+  ].filter((key, index, values) => values.indexOf(key) === index);
+  const displayNutrient = (value) => Number.isFinite(value)
+    ? Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })
+    : "Unavailable";
+
+  return (
+    <article className="dashboard-recipe-card">
+      <div className="dashboard-recipe-card-header">
+        <div>
+          <p className="dashboard-eyebrow">{recipe.mealType.replace("-", " ")}</p>
+          <h3>{recipe.name}</h3>
+        </div>
+        <span className={`dashboard-recipe-status${recipe.recommendable ? " is-verified" : ""}`}>{statusLabel}</span>
+      </div>
+      <p className="dashboard-recipe-serving">{recipe.portionSize}</p>
+      <p className="dashboard-recipe-muted">
+        Recipe status: {recipe.verificationStatus}; nutrition coverage: {recipe.nutritionCoverage};
+        {" "}serving yield: {recipe.servingCountPrecision}; source status: {recipe.provenance.status};
+        {" "}required nutrients available: {recipe.nutritionCompleteness.availableRequiredNutrientCount}/
+        {recipe.nutritionCompleteness.requiredNutrientCount}.
+      </p>
+      {nutrition ? (
+        <dl aria-label="Per-serving mapped-ingredient nutrition estimate" className="dashboard-recipe-nutrients">
+          <div><dt>kcal*</dt><dd>{displayNutrient(nutrition.calories)}</dd></div>
+          <div><dt>Protein*</dt><dd>{displayNutrient(nutrition.protein)} g</dd></div>
+          <div><dt>Carbs*</dt><dd>{displayNutrient(nutrition.carbohydrates)} g</dd></div>
+          <div><dt>Fat*</dt><dd>{displayNutrient(nutrition.fat)} g</dd></div>
+        </dl>
+      ) : <p className="dashboard-recipe-notice">Nutrition cannot be calculated from the available ingredient records.</p>}
+      {micronutrients.length > 0 && (
+        <details className="dashboard-recipe-micronutrients">
+          <summary>Available micronutrients per serving ({micronutrients.length})</summary>
+          <dl>
+            {micronutrients.map(([key, value]) => (
+              <div key={key}>
+                <dt>{nutritionNutrientLabels[key] || key}</dt>
+                <dd>{displayNutrient(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
+      {missingNutrients.length > 0 && (
+        <p className="dashboard-recipe-notice">
+          Nutrients unavailable for this calculation: {missingNutrients.map((key) => nutritionNutrientLabels[key] || key).join(", ")}.
+        </p>
+      )}
+      {recipe.nutrition.warnings.map((warning) => <p className="dashboard-recipe-notice" key={warning}>{warning}</p>)}
+      {recipe.nutrition.errors.map((error) => <p className="dashboard-recipe-notice" key={error}>{error}</p>)}
+      {!recipe.recommendable && recipe.verificationReasons.length > 0 && (
+        <details className="dashboard-recipe-micronutrients">
+          <summary>Verification gaps ({recipe.verificationReasons.length})</summary>
+          <ul className="dashboard-recipe-instructions">
+            {recipe.verificationReasons.map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+        </details>
+      )}
+      <h4>Mapped ingredients</h4>
+      <ul className="dashboard-recipe-ingredients">
+        {recipe.ingredients.map((ingredient) => (
+          <li key={ingredient.ingredientId}>
+            {ingredient.name} - {ingredient.quantityGrams} g
+            {ingredient.quantityPrecision !== "exact" && <span> (estimated from {ingredient.sourceQuantity})</span>}
+            <span> — nutrition {ingredient.verificationStatus}; recipe match {ingredient.ingredientMatchStatus}</span>
+            {ingredient.source.sourceReference && (
+              <span> [<a href={ingredient.source.sourceUrl} rel="noreferrer" target="_blank">{ingredient.source.sourceReference}</a>]</span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {recipe.sourceIngredients.length > 0 && (
+        <>
+          <h4>Source ingredient list</h4>
+          <p className="dashboard-recipe-muted">{recipe.sourceIngredients.join("; ")}</p>
+        </>
+      )}
+      {recipe.unmappedIngredients.length > 0 && (
+        <>
+          <h4>Not included in nutrition calculation</h4>
+          <p className="dashboard-recipe-muted">{recipe.unmappedIngredients.join(", ")}</p>
+        </>
+      )}
+      <h4>Preparation</h4>
+      <ol className="dashboard-recipe-instructions">
+        {recipe.instructions.map((instruction, index) => <li key={`${recipe.id}-step-${index}`}>{instruction}</li>)}
+      </ol>
+      <p className="dashboard-recipe-muted">
+        Dietary labels ({recipe.dietaryClassificationStatus}): {recipe.tags.length ? recipe.tags.join(", ") : "not classified"}.
+        {" "}Allergen coverage ({recipe.allergenInformationStatus}): {recipe.allergens.length ? recipe.allergens.join(", ") : "not fully classified"}.
+        {recipe.allergenInformationStatus !== "complete" && " Do not rely on this list for allergy safety; check the complete source composition."}
+      </p>
+      <p className="dashboard-recipe-footnote">* Estimate from mapped ingredients only; not a complete analysis of the prepared dish.</p>
+      <a href={recipe.provenance.sourceUrl} rel="noreferrer" target="_blank">
+        Source: {recipe.provenance.sourceName} - {recipe.provenance.sourceReference}
+      </a>
+    </article>
   );
 }
 

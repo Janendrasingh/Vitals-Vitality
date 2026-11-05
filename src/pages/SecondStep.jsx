@@ -6,7 +6,28 @@ import AllergySection from "../components/step2/AllergySection";
 import SecondStepImage from "../assets/SecondStepBG.png";
 import Logo from "../assets/logo.png";
 
+const foodPreferenceOptions = [
+  { value: "rice", label: "Rice" },
+  { value: "lentils", label: "Lentils" },
+  { value: "paneer", label: "Paneer" },
+  { value: "vegetables", label: "Vegetables" },
+  { value: "fruits", label: "Fruits" },
+  { value: "nuts and seeds", label: "Nuts & seeds" },
+  { value: "cereals and grains", label: "Grains" },
+  { value: "pulses and legumes", label: "Pulses" },
+  { value: "dairy products", label: "Dairy" },
+];
+
 export default function SecondStep({ step, nextStep, prevStep, formData, setFormData, onReturnDashboard }) {
+  const foodPreferences = Array.isArray(formData.foodPreferences) ? formData.foodPreferences : [];
+
+  function toggleFoodPreference(value) {
+    const updated = foodPreferences.includes(value)
+      ? foodPreferences.filter((preference) => preference !== value)
+      : [...foodPreferences, value];
+    setFormData((previous) => ({ ...previous, foodPreferences: updated }));
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 flex justify-center items-center p-6">
       <div className="w-full max-w-7xl bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col lg:flex-row">
@@ -103,6 +124,23 @@ export default function SecondStep({ step, nextStep, prevStep, formData, setForm
               onChange={(diets) => setFormData((previous) => ({ ...previous, diets }))}
             />
           </div>
+
+          <fieldset className="mt-10">
+            <legend className="text-2xl font-bold text-gray-900">Foods you enjoy</legend>
+            <p className="mt-2 text-sm text-gray-600">Optional preferences help narrow meal suggestions. Allergies are handled separately below.</p>
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {foodPreferenceOptions.map((option) => (
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-3 text-sm font-medium text-slate-700" key={option.value}>
+                  <input
+                    checked={foodPreferences.includes(option.value)}
+                    onChange={() => toggleFoodPreference(option.value)}
+                    type="checkbox"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           {/* ================= ALLERGY SECTION ================= */}
 

@@ -1,7 +1,38 @@
-const nutrientKeys = ["calories", "protein", "carbohydrates", "fat", "fibre"];
+import { evaluateRecipeVerification } from "./nutritionValidation.js";
+
+const requiredNutrientKeys = ["calories", "protein", "carbohydrates", "fat", "fibre"];
 const mealCategories = new Set(["breakfast", "lunch", "evening-snacks", "dinner"]);
 
-export const nutritionCalculationNote = "Nutrition is calculated from documented ingredient weights and preparation assumptions. Ingredient weights must use the same preparation state and quantity basis as their nutrition records; no cooking-yield or oil-absorption conversion is inferred.";
+export const nutritionNutrientLabels = Object.freeze({
+  calories: "Calories (kcal)",
+  protein: "Protein (g)",
+  carbohydrates: "Carbohydrates (g)",
+  fat: "Fat (g)",
+  fibre: "Fibre (g)",
+  sugars: "Sugars (g)",
+  calcium: "Calcium (mg)",
+  iron: "Iron (mg)",
+  magnesium: "Magnesium (mg)",
+  phosphorus: "Phosphorus (mg)",
+  potassium: "Potassium (mg)",
+  sodium: "Sodium (mg)",
+  zinc: "Zinc (mg)",
+  copper: "Copper (mg)",
+  selenium: "Selenium (µg)",
+  vitaminA: "Vitamin A (µg RAE)",
+  vitaminE: "Vitamin E (mg)",
+  vitaminC: "Vitamin C (mg)",
+  thiamin: "Thiamin (mg)",
+  riboflavin: "Riboflavin (mg)",
+  niacin: "Niacin (mg)",
+  pantothenicAcid: "Pantothenic acid (mg)",
+  vitaminB6: "Vitamin B6 (mg)",
+  folate: "Folate (µg)",
+  vitaminB12: "Vitamin B12 (µg)",
+  vitaminK: "Vitamin K (µg)",
+});
+
+export const nutritionCalculationNote = "Nutrition is calculated from cited per-100-gram ingredient records and the entered edible quantities. Preparation state and quantity basis must match; no cooking-yield or oil-absorption conversion is inferred. An optional nutrient is reported only when every non-zero ingredient has a source value for it.";
 
 function isPositiveNumber(value) {
   return Number.isFinite(value) && value > 0;
@@ -63,11 +94,20 @@ function validateNutrition(nutrition, label, errors) {
     errors.push(`${label} is missing its per-100-gram nutrition record.`);
     return false;
   }
-  const missing = nutrientKeys.filter((key) =>
+  const missing = requiredNutrientKeys.filter((key) =>
     !Number.isFinite(nutrition[key]) || nutrition[key] < 0
   );
   if (missing.length) {
     errors.push(`${label} has missing or invalid nutrient values: ${missing.join(", ")}.`);
+    return false;
+  }
+  const invalidOptional = Object.entries(nutrition).filter(([key, value]) =>
+    !requiredNutrientKeys.includes(key)
+    && value !== null
+    && (!Number.isFinite(value) || value < 0)
+  );
+  if (invalidOptional.length) {
+    errors.push(`${label} has invalid optional nutrient values: ${invalidOptional.map(([key]) => key).join(", ")}.`);
     return false;
   }
   return true;
@@ -75,21 +115,157 @@ function validateNutrition(nutrition, label, errors) {
 
 function roundNutrients(nutrients) {
   return Object.fromEntries(
-    nutrientKeys.map((key) => [key, Math.round((nutrients[key] + Number.EPSILON) * 100) / 100])
+    Object.entries(nutrients).map(([key, value]) => [
+      key,
+      Number.isFinite(value)
+        ? Math.round((value + Number.EPSILON) * 100) / 100
+        : null,
+    ])
   );
 }
 
-function unavailable(errors) {
+function unavailable(errors, missingNutrients = []) {
   return {
     available: false,
     verified: false,
     errors,
     warnings: [],
+    missingNutrients,
     calculationNote: nutritionCalculationNote,
     servings: null,
     total: null,
     perServing: null,
   };
+}
+
+function calculateIngredientNutrition(
+  recipeIngredients,
+  ingredientDatabase,
+  servingCount,
+  { requirePreparationDetails = false } = {},
+) {
+  const errors = [];
+  const ingredientIndex = indexIngredients(ingredientDatabase, errors);
+  const records = Array.isArray(recipeIngredients) ? recipeIngredients : [];
+  const resolved = [];
+  const seenIngredientIds = new Set();
+  const missingRequiredNutrients = new Set();
+
+  for (const [position, recipeIngredient] of records.entries()) {
+    const label = `Recipe ingredient ${position + 1}`;
+    if (!recipeIngredient || typeof recipeIngredient !== "object") {
+      errors.push(`${label} must be an object.`);
+      continue;
+    }
+    const { ingredientId, quantityGrams, preparationState, quantityBasis } = recipeIngredient;
+    if (typeof ingredientId !== "string" || !ingredientId.trim()) {
+      errors.push(`${label} must have an ingredient ID.`);
+      continue;
+    }
+    if (seenIngredientIds.has(ingredientId)) {
+      errors.push(`Ingredient "${ingredientId}" is duplicated in the recipe.`);
+      continue;
+    }
+    seenIngredientIds.add(ingredientId);
+    const ingredient = ingredientIndex.get(ingredientId);
+    if (!ingredient) {
+      errors.push(`Ingredient "${ingredientId}" is missing from the ingredient database.`);
+      continue;
+    }
+    if (!Number.isFinite(quantityGrams) || quantityGrams < 0) {
+      errors.push(`Ingredient "${ingredientId}" must have a non-negative quantity in grams.`);
+      continue;
+    }
+    if (requirePreparationDetails && (typeof preparationState !== "string" || !preparationState.trim())) {
+      errors.push(`Ingredient "${ingredientId}" must specify its preparation state.`);
+    } else if (preparationState !== ingredient.preparationState) {
+      if (preparationState !== undefined && preparationState !== null) {
+        errors.push(`Ingredient "${ingredientId}" preparation state does not match its nutrition record.`);
+      }
+    }
+    if (requirePreparationDetails && (typeof quantityBasis !== "string" || !quantityBasis.trim())) {
+      errors.push(`Ingredient "${ingredientId}" must specify its edible or consumed quantity basis.`);
+    } else if (quantityBasis !== ingredient.quantityBasis) {
+      if (quantityBasis !== undefined && quantityBasis !== null) {
+        errors.push(`Ingredient "${ingredientId}" quantity basis does not match its nutrition record.`);
+      }
+    }
+    validateNutrition(ingredient.nutritionPer100g, `Ingredient "${ingredientId}"`, errors);
+    requiredNutrientKeys.forEach((key) => {
+      if (!Number.isFinite(ingredient.nutritionPer100g?.[key])) {
+        missingRequiredNutrients.add(key);
+      }
+    });
+    validateSource(ingredient.source, `Ingredient "${ingredientId}"`, errors);
+    resolved.push({ ingredient, quantityGrams });
+  }
+
+  if (errors.length) return unavailable(errors, [...missingRequiredNutrients]);
+
+  const nutrientKeys = new Set(requiredNutrientKeys);
+  resolved.forEach(({ ingredient }) => {
+    Object.keys(ingredient.nutritionPer100g).forEach((key) => nutrientKeys.add(key));
+  });
+  const total = {};
+  const unavailableOptionalNutrients = [];
+
+  for (const key of nutrientKeys) {
+    const complete = resolved.every(({ ingredient, quantityGrams }) =>
+      quantityGrams === 0 || Number.isFinite(ingredient.nutritionPer100g[key])
+    );
+    if (!complete) {
+      total[key] = null;
+      if (!requiredNutrientKeys.includes(key)) unavailableOptionalNutrients.push(key);
+      continue;
+    }
+    total[key] = resolved.reduce(
+      (sum, { ingredient, quantityGrams }) =>
+        sum + ((ingredient.nutritionPer100g[key] || 0) * quantityGrams) / 100,
+      0
+    );
+  }
+
+  const roundedTotal = roundNutrients(total);
+  const perServing = roundNutrients(
+    Object.fromEntries(Object.entries(total).map(([key, value]) => [
+      key,
+      Number.isFinite(value) ? value / servingCount : null,
+    ]))
+  );
+  const ingredientDataVerified = resolved.every(
+    ({ ingredient }) => ingredient.verificationStatus === "verified"
+  );
+  const warnings = [];
+  if (!ingredientDataVerified) warnings.push("One or more ingredient nutrition records are not verified.");
+  if (unavailableOptionalNutrients.length) {
+    warnings.push(`Optional nutrient totals are unavailable: ${unavailableOptionalNutrients.join(", ")}.`);
+  }
+
+  return {
+    available: true,
+    verified: ingredientDataVerified,
+    errors: [],
+    warnings,
+    missingNutrients: unavailableOptionalNutrients,
+    calculationNote: nutritionCalculationNote,
+    servings: servingCount,
+    total: roundedTotal,
+    perServing,
+  };
+}
+
+export function calculateMealNutrition(
+  ingredients,
+  ingredientDatabase,
+  { servings = 1 } = {},
+) {
+  if (!Array.isArray(ingredients) || ingredients.length === 0) {
+    return unavailable(["A meal must contain at least one ingredient."]);
+  }
+  if (!isPositiveNumber(servings)) {
+    return unavailable(["Meal servings must be a positive number."]);
+  }
+  return calculateIngredientNutrition(ingredients, ingredientDatabase, servings);
 }
 
 export function calculateRecipeNutrition(
@@ -109,50 +285,8 @@ export function calculateRecipeNutrition(
   }
 
   const servingCount = servings === undefined ? recipe.servings : servings;
-  if (!isPositiveNumber(servingCount)) {
-    errors.push("Recipe servings must be a positive number.");
-  }
+  if (!isPositiveNumber(servingCount)) errors.push("Recipe servings must be a positive number.");
   validateSource(recipe.provenance, "Recipe provenance", errors);
-
-  const ingredientIndex = indexIngredients(ingredientDatabase, errors);
-  const records = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
-  const resolved = [];
-
-  for (const [position, recipeIngredient] of records.entries()) {
-    const label = `Recipe ingredient ${position + 1}`;
-    if (!recipeIngredient || typeof recipeIngredient !== "object") {
-      errors.push(`${label} must be an object.`);
-      continue;
-    }
-    const { ingredientId, quantityGrams, preparationState, quantityBasis } = recipeIngredient;
-    if (typeof ingredientId !== "string" || !ingredientId.trim()) {
-      errors.push(`${label} must have an ingredient ID.`);
-      continue;
-    }
-    const ingredient = ingredientIndex.get(ingredientId);
-    if (!ingredient) {
-      errors.push(`Ingredient "${ingredientId}" is missing from the ingredient database.`);
-      continue;
-    }
-    if (!Number.isFinite(quantityGrams) || quantityGrams < 0) {
-      errors.push(`Ingredient "${ingredientId}" must have a non-negative quantity in grams.`);
-      continue;
-    }
-    if (typeof preparationState !== "string" || !preparationState.trim()) {
-      errors.push(`Ingredient "${ingredientId}" must specify its preparation state.`);
-    } else if (preparationState !== ingredient.preparationState) {
-      errors.push(`Ingredient "${ingredientId}" preparation state does not match its nutrition record.`);
-    }
-    if (typeof quantityBasis !== "string" || !quantityBasis.trim()) {
-      errors.push(`Ingredient "${ingredientId}" must specify its edible or consumed quantity basis.`);
-    } else if (quantityBasis !== ingredient.quantityBasis) {
-      errors.push(`Ingredient "${ingredientId}" quantity basis does not match its nutrition record.`);
-    }
-    validateNutrition(ingredient.nutritionPer100g, `Ingredient "${ingredientId}"`, errors);
-    validateSource(ingredient.source, `Ingredient "${ingredientId}"`, errors);
-    resolved.push({ ingredient, quantityGrams });
-  }
-
   if (typeof recipe.cookingMethod !== "string" || !recipe.cookingMethod.trim()) {
     errors.push("Recipe cooking method is missing.");
   }
@@ -165,37 +299,42 @@ export function calculateRecipeNutrition(
     errors.push("Recipe serving information is missing.");
   }
 
-  if (errors.length) return unavailable(errors);
-
-  const total = Object.fromEntries(nutrientKeys.map((key) => [key, 0]));
-  for (const { ingredient, quantityGrams } of resolved) {
-    for (const key of nutrientKeys) {
-      total[key] += (ingredient.nutritionPer100g[key] * quantityGrams) / 100;
+  const recipeIngredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+  for (const [position, ingredient] of recipeIngredients.entries()) {
+    if (!ingredient || typeof ingredient !== "object") continue;
+    const label = typeof ingredient.ingredientId === "string"
+      ? `Ingredient "${ingredient.ingredientId}"`
+      : `Recipe ingredient ${position + 1}`;
+    if (typeof ingredient.preparationState !== "string" || !ingredient.preparationState.trim()) {
+      errors.push(`${label} must specify its preparation state.`);
+    }
+    if (typeof ingredient.quantityBasis !== "string" || !ingredient.quantityBasis.trim()) {
+      errors.push(`${label} must specify its edible or consumed quantity basis.`);
     }
   }
+  if (errors.length) return unavailable(errors);
 
-  const roundedTotal = roundNutrients(total);
-  const perServing = roundNutrients(
-    Object.fromEntries(nutrientKeys.map((key) => [key, total[key] / servingCount]))
+  const result = calculateIngredientNutrition(
+    recipeIngredients,
+    ingredientDatabase,
+    servingCount,
+    { requirePreparationDetails: true }
   );
-  const ingredientDataVerified = resolved.every(
-    ({ ingredient }) => ingredient.verificationStatus === "verified"
-  );
-  const recipeVerified = recipe.verificationStatus === "verified";
-  const verified = ingredientDataVerified && recipeVerified;
-  const warnings = [];
-  if (!ingredientDataVerified) warnings.push("One or more ingredient nutrition records are not verified.");
-  if (!recipeVerified) warnings.push("Recipe composition and preparation have not been verified.");
+  if (!result.available) return result;
+
+  const verification = evaluateRecipeVerification(recipe, ingredientDatabase);
+  const recipeVerified = verification.eligible;
+  const warnings = [...result.warnings];
+  if (!recipeVerified) warnings.push("Recipe evidence and completeness requirements are not satisfied; this result is not recommendation-eligible.");
+  if (Array.isArray(recipe.unmappedIngredients) && recipe.unmappedIngredients.length) {
+    warnings.push(`${recipe.unmappedIngredients.length} source ingredient(s) are not included in the nutrition calculation.`);
+  }
 
   return {
-    available: true,
-    verified,
-    errors: [],
+    ...result,
+    verified: result.verified && recipeVerified,
     warnings,
-    calculationNote: nutritionCalculationNote,
-    servings: servingCount,
-    total: roundedTotal,
-    perServing,
+    verificationReasons: verification.reasons,
   };
 }
 

@@ -19,6 +19,7 @@ const emptyProfile = {
   activity: "",
   goal: "",
   diets: [],
+  foodPreferences: [],
   allergies: [],
   customAllergies: [],
   targetWeight: "",

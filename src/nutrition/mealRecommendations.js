@@ -61,7 +61,13 @@ function matchesAllergies(meal, allergies) {
 function satisfiesPreferences(meal, diets, preferences) {
   const tags = Array.isArray(meal.tags) ? meal.tags.map(normalize) : [];
   const ingredients = Array.isArray(meal.ingredients)
-    ? meal.ingredients.map((ingredient) => normalize(ingredient.name || ingredient))
+    ? meal.ingredients.flatMap((ingredient) => {
+        if (typeof ingredient === "string") return [normalize(ingredient)];
+        return [
+          normalize(ingredient.name),
+          normalize(ingredient.category).replace(/-/g, " "),
+        ].filter(Boolean);
+      })
     : [];
 
   const meetsDiets = diets.every((dietValue) => {
@@ -70,7 +76,7 @@ function satisfiesPreferences(meal, diets, preferences) {
     return tags.includes(key);
   });
   const meetsFoodPreferences = preferences.every((preferenceValue) => {
-    const preference = normalize(preferenceValue);
+    const preference = normalize(preferenceValue).replace(/-/g, " ");
     return !preference || tags.includes(preference) || ingredients.some((item) => item.includes(preference));
   });
 
