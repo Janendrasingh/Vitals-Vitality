@@ -1,3 +1,5 @@
+import { nutritionUnits } from "./nutritionUnits.js";
+
 const requiredNutrients = ["calories", "protein", "carbohydrates", "fat", "fibre"];
 const allowedVerificationStatuses = new Set(["verified", "estimated", "unverified"]);
 const requiredRecipeEvidence = [
@@ -84,9 +86,28 @@ export function validateIngredientRecords(records) {
       errors.push(`${label} is missing per-100-gram nutrition.`);
       continue;
     }
+    const units = ingredient.nutritionUnits;
+    if (!units || typeof units !== "object" || Array.isArray(units)) {
+      errors.push(`${label} is missing nutrient units.`);
+    }
     for (const [key, value] of Object.entries(nutrients)) {
+      const expectedUnit = nutritionUnits[key];
+      if (!expectedUnit) {
+        errors.push(`${label} has an unsupported nutrient key "${key}" with no defined unit.`);
+      } else if (units?.[key] !== expectedUnit) {
+        errors.push(`${label} has an invalid unit for ${key}; expected "${expectedUnit}".`);
+      }
       if (value !== null && (!Number.isFinite(value) || value < 0)) {
         errors.push(`${label} has an invalid ${key} value.`);
+      }
+    }
+    if (units && typeof units === "object" && !Array.isArray(units)) {
+      for (const [key, unit] of Object.entries(units)) {
+        if (!(key in nutrients)) {
+          errors.push(`${label} has a unit for missing nutrient "${key}".`);
+        } else if (nutritionUnits[key] && unit !== nutritionUnits[key]) {
+          errors.push(`${label} has an invalid unit for ${key}; expected "${nutritionUnits[key]}".`);
+        }
       }
     }
 
@@ -259,11 +280,17 @@ export function evaluateRecipeVerification(recipe, ingredientRecords) {
 export function validateRecipeDatabase(recipes, ingredientRecords) {
   const errors = [];
   const seenIds = new Set();
+  const seenNames = new Set();
   if (!Array.isArray(recipes)) return { valid: false, errors: ["Recipe database must be an array."] };
   recipes.forEach((recipe, index) => {
     if (recipe && typeof recipe.id === "string") {
       if (seenIds.has(recipe.id)) errors.push(`Recipe ID "${recipe.id}" is duplicated.`);
       seenIds.add(recipe.id);
+    }
+    if (recipe && typeof recipe.name === "string" && recipe.name.trim()) {
+      const normalizedName = recipe.name.trim().toLocaleLowerCase();
+      if (seenNames.has(normalizedName)) errors.push(`Recipe name "${recipe.name}" is duplicated.`);
+      seenNames.add(normalizedName);
     }
     const result = validateRecipeRecord(recipe, ingredientRecords);
     errors.push(...result.errors.map((error) => `Recipe ${index + 1}: ${error}`));

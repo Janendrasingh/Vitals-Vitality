@@ -436,6 +436,158 @@
   font-size: 10px;
 }
 
+.dashboard-daily-plan {
+  margin: 20px 0;
+  padding: 22px;
+}
+
+.dashboard-daily-plan .dashboard-section-heading {
+  align-items: flex-start;
+}
+
+.dashboard-plan-distribution {
+  margin: 16px 0;
+  border: 1px solid #e5ece7;
+  border-radius: 14px;
+  background: #fbfcfb;
+  padding: 13px 15px;
+}
+
+.dashboard-plan-distribution summary {
+  color: #347242;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-plan-distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.dashboard-plan-distribution-grid label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #687570;
+  font-size: 11px;
+}
+
+.dashboard-plan-percent-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dashboard-plan-percent-input input {
+  width: 58px;
+  border: 1px solid #dfe8e2;
+  border-radius: 8px;
+  background: white;
+  color: #293633;
+  padding: 6px;
+  text-align: right;
+}
+
+.dashboard-plan-distribution > p,
+.dashboard-plan-empty,
+.dashboard-plan-remaining {
+  margin: 12px 0 0;
+  color: #77827e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.dashboard-plan-empty {
+  border: 1px solid #e9e3ce;
+  border-radius: 12px;
+  background: #fffdf6;
+  color: #6f5c2c;
+  padding: 12px 14px;
+}
+
+.dashboard-plan-meal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+  gap: 12px;
+}
+
+.dashboard-plan-meal-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid #e5ece7;
+  border-radius: 16px;
+  background: white;
+  padding: 15px;
+}
+
+.dashboard-plan-meal-card h3 {
+  margin: 12px 0 0;
+  color: #293633;
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.dashboard-plan-meal-card > p {
+  margin: 6px 0 0;
+  color: #77827e;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.dashboard-plan-verification {
+  margin-top: 8px;
+  color: #347242;
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.dashboard-plan-meal-card .dashboard-suggestion-macros {
+  gap: 6px 9px;
+}
+
+.dashboard-plan-meal-card .dashboard-text-action {
+  margin-top: auto;
+  padding-top: 14px;
+}
+
+.dashboard-plan-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.dashboard-plan-summary-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border-radius: 12px;
+  background: #f3f7f4;
+  padding: 11px 13px;
+}
+
+.dashboard-plan-summary-grid span {
+  color: #77827e;
+  font-size: 10px;
+}
+
+.dashboard-plan-summary-grid strong {
+  color: #293633;
+  font-size: 14px;
+}
+
+.dashboard-plan-remaining {
+  border-top: 1px solid #e8edeb;
+  padding-top: 12px;
+}
+
 .dashboard-recipe-tags {
   display: flex;
   flex-wrap: wrap;

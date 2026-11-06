@@ -1,12 +1,12 @@
-const mealSlots = [
+const defaultMealSlots = [
   { id: "breakfast", label: "Breakfast", calorieShare: 0.25 },
   { id: "lunch", label: "Lunch", calorieShare: 0.3 },
   { id: "evening-snacks", label: "Evening Snacks", calorieShare: 0.1 },
   { id: "dinner", label: "Dinner", calorieShare: 0.35 },
 ];
 
-function emptySlots() {
-  return mealSlots.map((slot) => ({
+function emptySlots(slots = defaultMealSlots) {
+  return slots.map((slot) => ({
     mealType: slot.id,
     label: slot.label,
     recommendation: null,
@@ -35,25 +35,30 @@ function normalize(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeCategory(value) {
+  return normalize(value).replace(/[_-]+/g, " ");
+}
+
 function matchesAllergies(meal, allergies) {
   const declaredAllergens = Array.isArray(meal.allergens)
-    ? meal.allergens.map(normalize)
+    ? meal.allergens.map(normalizeCategory)
     : null;
   const ingredients = Array.isArray(meal.ingredients)
-    ? meal.ingredients.map((ingredient) => normalize(ingredient.name || ingredient))
+    ? meal.ingredients.map((ingredient) => normalizeCategory(ingredient.name || ingredient))
     : [];
 
   if (!declaredAllergens) return false;
   return allergies.every((allergyValue) => {
-    const allergy = normalize(allergyValue);
+    const allergy = normalizeCategory(allergyValue);
     if (!allergy) return true;
-    const category = Object.entries(knownAllergyAliases).find(([, aliases]) =>
-      aliases.some((alias) => allergy.includes(alias))
+    const category = Object.entries(knownAllergyAliases).find(([key, aliases]) =>
+      [key, ...aliases].some((alias) => allergy.includes(normalizeCategory(alias)))
     )?.[0];
     if (!category) return false;
-    const aliases = knownAllergyAliases[category];
+    const aliases = knownAllergyAliases[category].map(normalizeCategory);
+    const normalizedCategory = normalizeCategory(category);
     return !declaredAllergens.some((item) =>
-      item === category || aliases.some((alias) => item.includes(alias))
+      item === normalizedCategory || aliases.some((alias) => item.includes(alias))
     ) && !ingredients.some((item) => aliases.some((alias) => item.includes(alias)));
   });
 }
@@ -93,17 +98,22 @@ function isValidSourceUrl(value) {
   }
 }
 
-function isVerifiedMeal(meal) {
+function isVerifiedMeal(meal, slots) {
   return meal
     && typeof meal.id === "string"
     && Boolean(meal.id.trim())
     && typeof meal.name === "string"
     && Boolean(meal.name.trim())
-    && mealSlots.some((slot) => slot.id === normalize(meal.mealType))
+    && slots.some((slot) => (slot.mealType || slot.id) === normalize(meal.mealType))
     && Number.isFinite(meal.calories) && meal.calories > 0
     && Number.isFinite(meal.protein) && meal.protein >= 0
     && Number.isFinite(meal.carbohydrates) && meal.carbohydrates >= 0
     && Number.isFinite(meal.fat) && meal.fat >= 0
+    && Number.isFinite(meal.fiber) && meal.fiber >= 0
+    && meal.verificationStatus === "verified"
+    && meal.nutritionCoverage === "complete"
+    && meal.nutritionComplete === true
+    && meal.allergenInformationStatus === "complete"
     && typeof meal.portionSize === "string"
     && Boolean(meal.portionSize.trim())
     && Array.isArray(meal.ingredients)
@@ -143,12 +153,40 @@ export function recommendMeals({
   allergies = [],
   preferences = [],
   activity = null,
+  consumedMealIds = [],
+  consumedMealNames = [],
+  slots = defaultMealSlots,
+  distributionFromInitial = false,
 } = {}) {
+  const validSlots = Array.isArray(slots)
+    && slots.length > 0
+    && slots.every((slot) =>
+      slot
+      && typeof slot.id === "string"
+      && slot.id.trim()
+      && typeof slot.label === "string"
+      && slot.label.trim()
+      && Number.isFinite(slot.calorieShare)
+      && slot.calorieShare >= 0
+      && (slot.mealType === undefined
+        || (typeof slot.mealType === "string" && slot.mealType.trim()))
+    );
+  const recommendationSlots = validSlots ? slots : defaultMealSlots;
+  const emptyResults = () => emptySlots(recommendationSlots);
+
+  if (!validSlots) {
+    return {
+      status: "unavailable",
+      reason: "Meal plan slots or calorie distribution are invalid.",
+      meals: emptyResults(),
+    };
+  }
+
   if (!Number.isFinite(calorieTarget) || calorieTarget <= 0) {
     return {
       status: "unavailable",
       reason: "A valid daily calorie estimate is required before meals can be portioned.",
-      meals: emptySlots(),
+      meals: emptyResults(),
     };
   }
 
@@ -156,7 +194,17 @@ export function recommendMeals({
     return {
       status: "unavailable",
       reason: "Your estimated calorie target has been reached; no further meal portions are recommended today.",
-      meals: emptySlots(),
+      meals: emptyResults(),
+    };
+  }
+
+  if ([remainingProtein, remainingCarbohydrates, remainingFat].some((value) =>
+    value === null || (value !== undefined && (!Number.isFinite(value) || value < 0))
+  )) {
+    return {
+      status: "unavailable",
+      reason: "Remaining macro targets are unavailable because a logged meal has incomplete nutrition data.",
+      meals: emptyResults(),
     };
   }
 
@@ -164,11 +212,11 @@ export function recommendMeals({
     return {
       status: "unavailable",
       reason: source?.unavailableReason || "No verified nutrition dataset is configured; meal nutrition has not been estimated.",
-      meals: emptySlots(),
+      meals: emptyResults(),
     };
   }
 
-  const validMeals = source.meals.filter(isVerifiedMeal);
+  const validMeals = source.meals.filter((meal) => isVerifiedMeal(meal, recommendationSlots));
   const idCounts = new Map();
   validMeals.forEach(({ id }) => idCounts.set(id, (idCounts.get(id) || 0) + 1));
   const verifiedMeals = validMeals.filter((meal) => idCounts.get(meal.id) === 1);
@@ -176,29 +224,54 @@ export function recommendMeals({
     matchesAllergies(meal, allergies)
       && satisfiesPreferences(meal, diets, preferences)
   );
+  const loggedMealIds = new Set(
+    (Array.isArray(consumedMealIds) ? consumedMealIds : [])
+      .filter((id) => typeof id === "string" && id.trim())
+      .map((id) => id.trim())
+  );
+  const loggedMealNames = new Set(
+    (Array.isArray(consumedMealNames) ? consumedMealNames : [])
+      .filter((name) => typeof name === "string" && name.trim())
+      .map(normalize)
+  );
+  const unloggedMeals = eligibleMeals.filter((meal) =>
+    !loggedMealIds.has(meal.id) && !loggedMealNames.has(normalize(meal.name))
+  );
+  const selectedMealIds = new Set();
 
   let caloriesLeft = remainingCalories;
   let proteinLeft = Number.isFinite(remainingProtein) ? remainingProtein : Infinity;
   let carbohydratesLeft = Number.isFinite(remainingCarbohydrates) ? remainingCarbohydrates : Infinity;
   let fatLeft = Number.isFinite(remainingFat) ? remainingFat : Infinity;
+  const initialBudgets = {
+    calories: caloriesLeft,
+    protein: proteinLeft,
+    carbohydrates: carbohydratesLeft,
+    fat: fatLeft,
+  };
 
-  const meals = mealSlots.map((slot) => {
+  const meals = recommendationSlots.map((slot) => {
     if (caloriesLeft <= 0) {
       return { mealType: slot.id, label: slot.label, recommendation: null };
     }
 
-    const calorieAllocation = caloriesLeft * slot.calorieShare;
-    const proteinAllocation = Number.isFinite(proteinLeft)
-      ? proteinLeft * slot.calorieShare
+    const calorieAllocation = (distributionFromInitial ? initialBudgets.calories : caloriesLeft)
+      * slot.calorieShare;
+    const proteinBudget = distributionFromInitial ? initialBudgets.protein : proteinLeft;
+    const carbohydrateBudget = distributionFromInitial ? initialBudgets.carbohydrates : carbohydratesLeft;
+    const fatBudget = distributionFromInitial ? initialBudgets.fat : fatLeft;
+    const proteinAllocation = Number.isFinite(proteinBudget)
+      ? proteinBudget * slot.calorieShare
       : null;
-    const carbohydrateAllocation = Number.isFinite(carbohydratesLeft)
-      ? carbohydratesLeft * slot.calorieShare
+    const carbohydrateAllocation = Number.isFinite(carbohydrateBudget)
+      ? carbohydrateBudget * slot.calorieShare
       : null;
-    const fatAllocation = Number.isFinite(fatLeft)
-      ? fatLeft * slot.calorieShare
+    const fatAllocation = Number.isFinite(fatBudget)
+      ? fatBudget * slot.calorieShare
       : null;
-    const candidates = eligibleMeals
-      .filter((meal) => normalize(meal.mealType) === slot.id)
+    const candidates = unloggedMeals
+      .filter((meal) => normalize(meal.mealType) === (slot.mealType || slot.id))
+      .filter((meal) => !selectedMealIds.has(meal.id))
       .filter((meal) =>
         meal.calories <= caloriesLeft
         && meal.protein <= proteinLeft
@@ -224,6 +297,7 @@ export function recommendMeals({
 
     const recommendation = candidates[0]?.meal || null;
     if (recommendation) {
+      selectedMealIds.add(recommendation.id);
       caloriesLeft -= recommendation.calories;
       proteinLeft -= recommendation.protein;
       carbohydratesLeft -= recommendation.carbohydrates;
@@ -244,6 +318,8 @@ export function recommendMeals({
         ? "The configured food source has no complete, verified nutrition records."
         : eligibleMeals.length === 0
           ? "No verified meals match your selected diet and allergy restrictions."
+          : unloggedMeals.length === 0
+            ? "All otherwise suitable meals have already been logged today."
           : "No verified meal portions fit your remaining calorie and macronutrient budget.",
       meals,
     };

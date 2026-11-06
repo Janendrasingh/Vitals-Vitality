@@ -23,6 +23,7 @@ const fixtureIngredient = {
   preparationState: "dry",
   quantityBasis: "edible-portion",
   nutritionPer100g: { calories: 100, protein: 5, carbohydrates: 20, fat: 1, fibre: 4 },
+  nutritionUnits: { calories: "kcal", protein: "g", carbohydrates: "g", fat: "g", fibre: "g" },
   missingRequiredNutrients: [],
   source,
   verificationStatus: "verified",
@@ -87,6 +88,11 @@ test("validates the current source-cited ingredient database", () => {
   assert.equal(result.valid, true, result.errors.join(" "));
   assert.equal(ingredients.length, 73);
   assert.equal(new Set(ingredients.map(({ id }) => id)).size, ingredients.length);
+  assert.ok(ingredients.every((ingredient) =>
+    Object.keys(ingredient.nutritionPer100g).every((key) =>
+      ingredient.nutritionUnits[key] !== undefined
+    )
+  ));
 });
 
 test("adds source-cited USDA spice records without claiming recipe-form matches", () => {
@@ -165,6 +171,133 @@ test("records original ingredient lists and yields for eight recipe sources with
   assert.equal(evaluateRecipeVerification(unchecked, ingredients).eligible, false);
 });
 
+test("reconciles pilot recipe ingredient coverage without treating approximate mappings as exact", () => {
+  const expected = new Map([
+    ["masoor-dal", {
+      sourceIngredients: 18,
+      mapped: 9,
+      unmapped: 9,
+      exact: 1,
+      approximate: 8,
+      missingMappedQuantities: 0,
+      sourceUrl: "https://www.indianhealthyrecipes.com/masoor-dal-recipe/",
+    }],
+    ["paneer-bhurji", {
+      sourceIngredients: 15,
+      mapped: 9,
+      unmapped: 6,
+      exact: 1,
+      approximate: 8,
+      missingMappedQuantities: 0,
+      sourceUrl: "https://www.indianhealthyrecipes.com/paneer-bhurji-recipe/",
+    }],
+  ]);
+  const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  const ingredientById = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]));
+
+  for (const [id, counts] of expected) {
+    const recipe = recipeById.get(id);
+    const exactCount = recipe.ingredients.filter((item) => item.quantityPrecision === "exact").length;
+    const approximateCount = recipe.ingredients.filter((item) => item.quantityPrecision !== "exact").length;
+    const missingMappedQuantities = recipe.ingredients.filter((item) =>
+      !Number.isFinite(item.quantityGrams)
+    ).length;
+
+    assert.equal(recipe.sourceIngredients.length, counts.sourceIngredients);
+    assert.equal(recipe.ingredients.length, counts.mapped);
+    assert.equal(recipe.unmappedIngredients.length, counts.unmapped);
+    assert.equal(recipe.sourceIngredients.length, recipe.ingredients.length + recipe.unmappedIngredients.length);
+    assert.equal(exactCount, counts.exact);
+    assert.equal(approximateCount, counts.approximate);
+    assert.equal(missingMappedQuantities, counts.missingMappedQuantities);
+    assert.equal(recipe.provenance.sourceUrl, counts.sourceUrl);
+    assert.equal(recipe.sourceIngredientCoverage, "source-listed");
+
+    for (const item of recipe.ingredients) {
+      const ingredient = ingredientById.get(item.ingredientId);
+      assert.ok(ingredient, `${id} mapping ${item.ingredientId} has a nutrition record`);
+      assert.ok(ingredient.source.sourceReference);
+      assert.ok(ingredient.source.sourceUrl.startsWith("https://"));
+      assert.equal(item.ingredientMatchStatus, "unverified");
+    }
+  }
+
+  const masoor = recipeById.get("masoor-dal");
+  assert.ok(masoor.ingredients.some((item) => item.ingredientId === "red-lentils"));
+  assert.ok(masoor.unmappedIngredients.some((name) => /moong dal/i.test(name)));
+  assert.ok(!masoor.ingredients.some((item) => item.ingredientId === "mung-beans"));
+  assert.ok(!masoor.ingredients.some((item) => item.ingredientId === "coriander-seeds"));
+
+  const paneerBhurji = recipeById.get("paneer-bhurji");
+  assert.ok(paneerBhurji.ingredients.some((item) => item.ingredientId === "paneer"));
+  assert.ok(paneerBhurji.unmappedIngredients.includes("ginger garlic paste"));
+  assert.ok(ingredientById.get("paneer").source.sourceReference.includes("FDC food ID 2705740"));
+});
+
+test("keeps different pulse, herb, and spice identities distinct", () => {
+  const ingredientById = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]));
+  const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+  const allMappedIds = new Set(recipes.flatMap((recipe) =>
+    recipe.ingredients.map((item) => item.ingredientId)
+  ));
+
+  assert.equal(ingredientById.get("red-lentils").name, "Red lentils");
+  assert.ok(recipeById.get("masoor-dal").unmappedIngredients.some((name) => /moong dal/i.test(name)));
+  assert.ok(!allMappedIds.has("mung-beans"));
+  assert.ok(recipeById.get("vegetable-upma").unmappedIngredients.includes("urad dal"));
+  assert.ok(recipeById.get("vegetable-upma").unmappedIngredients.includes("chana dal"));
+  assert.ok(recipeById.get("masoor-dal").unmappedIngredients.includes("kasuri methi"));
+  for (const id of ["chana-masala", "rajma-masala"]) {
+    const recipe = recipeById.get(id);
+    assert.ok(recipe.unmappedIngredients.includes("ginger garlic paste"));
+    assert.ok(!recipe.ingredients.some((item) =>
+      ["ginger", "garlic"].includes(item.ingredientId)
+    ));
+  }
+  for (const recipe of recipes.filter((item) =>
+    item.unmappedIngredients.some((name) => /kasuri methi/i.test(name))
+  )) {
+    assert.ok(!recipe.ingredients.some((item) => item.ingredientId === "fenugreek-seeds-dried"));
+  }
+  assert.ok(allMappedIds.has("coriander-leaves-raw"));
+  assert.ok(!allMappedIds.has("coriander-seeds"));
+  assert.equal(ingredientById.get("mustard-seeds").name, "Ground mustard seeds");
+});
+
+test("keeps pilot recipes ineligible when allergen evidence or source mappings are incomplete", () => {
+  for (const id of ["masoor-dal", "paneer-bhurji"]) {
+    const recipe = recipes.find((item) => item.id === id);
+    const result = evaluateRecipeVerification(recipe, ingredients);
+
+    assert.equal(recipe.verificationStatus, "estimated");
+    assert.equal(recipe.allergenInformationStatus, "partial");
+    assert.equal(recipe.nutritionCoverage, "partial");
+    assert.equal(result.eligible, false);
+    assert.ok(result.reasons.includes("Allergen coverage is not complete."));
+    assert.ok(result.reasons.includes("Source ingredient coverage is not verified as complete."));
+    assert.ok(result.reasons.includes("One or more source ingredients are unmapped."));
+  }
+});
+
+test("does not calculate pilot recipe nutrition when a required source nutrient is missing", () => {
+  const masoor = recipes.find((recipe) => recipe.id === "masoor-dal");
+  const incompleteIngredients = ingredients.map((ingredient) =>
+    ingredient.id === "red-lentils"
+      ? {
+        ...ingredient,
+        nutritionPer100g: { ...ingredient.nutritionPer100g, fibre: null },
+      }
+      : ingredient
+  );
+  const result = calculateMealNutrition(masoor.ingredients, incompleteIngredients, {
+    servings: masoor.servings,
+  });
+
+  assert.equal(result.available, false);
+  assert.equal(result.perServing, null);
+  assert.ok(result.errors.some((error) => /missing or invalid nutrient values: fibre/.test(error)));
+});
+
 test("keeps recipe allergens incomplete when source alternatives and cross-contact are unresolved", () => {
   for (const recipe of recipes) {
     assert.equal(recipe.allergenInformationStatus, "partial", recipe.id);
@@ -191,6 +324,26 @@ test("reports duplicate IDs, duplicate names, and missing required nutrition", (
   assert.ok(result.errors.some((error) => /ID .* duplicated/.test(error)));
   assert.ok(result.errors.some((error) => /name .* duplicated/.test(error)));
   assert.ok(result.warnings.some((warning) => /missing required nutrients: fibre/.test(warning)));
+});
+
+test("rejects missing, invalid, and unsupported nutrient units", () => {
+  const missingUnits = validateIngredientRecords([{
+    ...fixtureIngredient,
+    nutritionUnits: undefined,
+  }]);
+  const invalidUnit = validateIngredientRecords([{
+    ...fixtureIngredient,
+    nutritionUnits: { ...fixtureIngredient.nutritionUnits, calories: "kJ" },
+  }]);
+  const unsupportedNutrient = validateIngredientRecords([{
+    ...fixtureIngredient,
+    nutritionPer100g: { ...fixtureIngredient.nutritionPer100g, energyKj: 100 },
+    nutritionUnits: { ...fixtureIngredient.nutritionUnits, energyKj: "kJ" },
+  }]);
+
+  assert.ok(missingUnits.errors.some((error) => /missing nutrient units/.test(error)));
+  assert.ok(invalidUnit.errors.some((error) => /invalid unit for calories; expected "kcal"/.test(error)));
+  assert.ok(unsupportedNutrient.errors.some((error) => /unsupported nutrient key "energyKj"/.test(error)));
 });
 
 test("rejects source, invalid nutrient values, and false verified status", () => {
@@ -276,4 +429,14 @@ test("detects duplicate IDs across the recipe catalog", () => {
 
   assert.equal(result.valid, false);
   assert.ok(result.errors.some((error) => /Recipe ID .* duplicated/.test(error)));
+});
+
+test("detects duplicate recipe names regardless of case and surrounding whitespace", () => {
+  const result = validateRecipeDatabase([
+    completeRecipe({ id: "fixture-recipe-one", name: "Besan Chilla" }),
+    completeRecipe({ id: "fixture-recipe-two", name: "  besan chilla " }),
+  ], [fixtureIngredient]);
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => /Recipe name .* duplicated/.test(error)));
 });

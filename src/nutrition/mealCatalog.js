@@ -87,6 +87,7 @@ export function createMealCatalog(recipeRecords, ingredientRecords) {
       sourceIngredientCoverage: recipe.sourceIngredientCoverage ?? "not-checked",
       verificationStatus: recipe.verificationStatus ?? "unverified",
       verificationNote: recipe.verificationNote ?? "Recipe verification status is not supplied.",
+      verificationEvidence: Object.freeze({ ...recipe.verificationEvidence }),
       nutritionCoverage: recipe.nutritionCoverage ?? "unverified",
       provenance: Object.freeze({ ...recipe.provenance }),
       validation: Object.freeze(validation),
@@ -117,7 +118,15 @@ export function createMealCatalog(recipeRecords, ingredientRecords) {
       allergens: recipe.allergens,
       tags: recipe.tags,
       sourceName: recipe.provenance.sourceName,
+      sourceReference: recipe.provenance.sourceReference,
       sourceUrl: recipe.provenance.sourceUrl,
+      provenance: Object.freeze({ ...recipe.provenance }),
+      verificationEvidence: Object.freeze({ ...recipe.verificationEvidence }),
+      verificationNote: recipe.verificationNote,
+      verificationStatus: recipe.verificationStatus,
+      nutritionCoverage: recipe.nutritionCoverage,
+      nutritionComplete: recipe.nutritionCompleteness.requiredNutrientsComplete,
+      allergenInformationStatus: recipe.allergenInformationStatus,
     })];
   });
 

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createMealCatalog } from "./mealCatalog.js";
+import { createMealCatalog, mealCatalog } from "./mealCatalog.js";
 import { recommendMeals } from "./mealRecommendations.js";
+import { ingredients } from "./database/ingredients.js";
+import { recipes } from "./database/recipes.js";
 
 const verifiedMeal = {
   id: "verified-breakfast",
@@ -12,12 +14,17 @@ const verifiedMeal = {
   protein: 25,
   carbohydrates: 60,
   fat: 15,
+  fiber: 8,
   ingredients: [{ name: "oats" }],
   allergens: [],
   tags: ["vegan", "vegetarian"],
   sourceName: "Test nutrition source",
   sourceUrl: "https://example.test/food",
   workoutFocus: "strength",
+  verificationStatus: "verified",
+  nutritionCoverage: "complete",
+  nutritionComplete: true,
+  allergenInformationStatus: "complete",
 };
 
 test("does not invent recommendations when a verified food source is unavailable", () => {
@@ -35,6 +42,23 @@ test("does not invent recommendations when a verified food source is unavailable
     "Dinner",
   ]);
   assert.equal(result.meals.every((slot) => slot.recommendation === null), true);
+});
+
+test("does not recommend the pilot recipes until their existing evidence gates pass", () => {
+  const pilotRecipes = recipes.filter(({ id }) => ["masoor-dal", "paneer-bhurji"].includes(id));
+  const pilotCatalog = createMealCatalog(pilotRecipes, ingredients);
+  const result = recommendMeals({
+    source: pilotCatalog,
+    calorieTarget: 2200,
+  });
+
+  assert.equal(pilotCatalog.recipes.length, 2);
+  assert.equal(pilotCatalog.meals.length, 0);
+  assert.equal(result.status, "unavailable");
+  assert.ok(result.meals.every((slot) => slot.recommendation === null));
+  assert.ok(mealCatalog.meals.every((meal) =>
+    !["masoor-dal", "paneer-bhurji"].includes(meal.id)
+  ));
 });
 
 test("returns four meal slots and selects the closest verified portion", () => {
@@ -261,6 +285,75 @@ test("honors matching dietary tags and selected food preferences", () => {
   assert.equal(result.meals[0].recommendation, verifiedMeal);
 });
 
+test("does not recommend a meal already logged today when a suitable alternative exists", () => {
+  const consumed = { ...verifiedMeal, id: "already-logged" };
+  const alternative = { ...verifiedMeal, id: "alternative" };
+  const result = recommendMeals({
+    source: { meals: [consumed, alternative] },
+    calorieTarget: 2000,
+    consumedMealIds: [consumed.id],
+  });
+
+  assert.equal(result.status, "ready");
+  assert.equal(result.meals[0].recommendation, alternative);
+});
+
+test("reports when all otherwise suitable meals have already been logged", () => {
+  const result = recommendMeals({
+    source: { meals: [verifiedMeal] },
+    calorieTarget: 2000,
+    consumedMealIds: [verifiedMeal.id],
+  });
+
+  test("avoids a repeated recipe by its logged name without changing Firebase meal IDs", () => {
+    const consumed = { ...verifiedMeal, id: "catalog-id" };
+    const alternative = { ...verifiedMeal, id: "alternative", name: "Another breakfast" };
+    const result = recommendMeals({
+      source: { meals: [consumed, alternative] },
+      calorieTarget: 2000,
+      consumedMealIds: ["firebase-entry-id"],
+      consumedMealNames: ["Example breakfast"],
+    });
+
+    assert.equal(result.meals[0].recommendation, alternative);
+  });
+
+  assert.equal(result.status, "unavailable");
+  assert.match(result.reason, /already been logged today/);
+  assert.equal(result.meals.every((slot) => slot.recommendation === null), true);
+});
+
+test("rejects meals without explicit complete nutrition and allergen verification", () => {
+  const incompleteMeals = [
+    { ...verifiedMeal, verificationStatus: "estimated" },
+    { ...verifiedMeal, nutritionCoverage: "partial" },
+    { ...verifiedMeal, nutritionComplete: false },
+    { ...verifiedMeal, allergenInformationStatus: "partial" },
+    { ...verifiedMeal, allergens: undefined },
+    { ...verifiedMeal, fiber: null },
+    { ...verifiedMeal, protein: null },
+    { ...verifiedMeal, fat: Number.NaN },
+  ];
+  const result = recommendMeals({
+    source: { meals: incompleteMeals },
+    calorieTarget: 2000,
+  });
+
+  assert.equal(result.status, "unavailable");
+  assert.match(result.reason, /no complete, verified nutrition records/);
+});
+
+test("does not recommend when logged macros are incomplete", () => {
+  const result = recommendMeals({
+    source: { meals: [verifiedMeal] },
+    calorieTarget: 2000,
+    remainingProtein: null,
+  });
+
+  assert.equal(result.status, "unavailable");
+  assert.match(result.reason, /logged meal has incomplete nutrition data/);
+});
+
 test("recommends nutrition calculated from cited ingredients within profile and preference filters", () => {
   const ingredient = {
     id: "fixture-lentils",
@@ -269,6 +362,7 @@ test("recommends nutrition calculated from cited ingredients within profile and 
     preparationState: "dry",
     quantityBasis: "edible-portion",
     nutritionPer100g: { calories: 300, protein: 24, carbohydrates: 50, fat: 2, fibre: 10 },
+    nutritionUnits: { calories: "kcal", protein: "g", carbohydrates: "g", fat: "g", fibre: "g" },
     source: {
       sourceName: "Synthetic test fixture",
       sourceReference: "fixture:lentils",
@@ -339,6 +433,10 @@ test("recommends nutrition calculated from cited ingredients within profile and 
   assert.equal(result.status, "ready");
   assert.equal(result.meals[0].recommendation.nutritionPerServing.calories, 300);
   assert.equal(result.meals[0].recommendation.protein, 24);
+  assert.equal(result.meals[0].recommendation.sourceReference, "fixture:recipe");
+  assert.equal(result.meals[0].recommendation.verificationStatus, "verified");
+  assert.equal(result.meals[0].recommendation.provenance.sourceUrl, "https://example.test/fixture/recipe");
+  assert.deepEqual(result.meals[0].recommendation.verificationEvidence, recipe.verificationEvidence);
 });
 
 test("excludes meals declaring a requested allergen", () => {
@@ -346,6 +444,16 @@ test("excludes meals declaring a requested allergen", () => {
     source: { meals: [{ ...verifiedMeal, allergens: ["peanut"] }] },
     calorieTarget: 2000,
     allergies: ["Peanuts"],
+  });
+
+  test("normalizes allergen category separators when applying allergy restrictions", () => {
+    const result = recommendMeals({
+      source: { meals: [{ ...verifiedMeal, allergens: ["tree-nut"] }] },
+      calorieTarget: 2000,
+      allergies: ["tree_nut"],
+    });
+
+    assert.equal(result.status, "unavailable");
   });
 
   assert.equal(result.status, "unavailable");

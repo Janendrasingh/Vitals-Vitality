@@ -1,3 +1,5 @@
+import { nutritionUnits } from "./nutritionUnits.js";
+
 export const ingredientCategories = Object.freeze([
   "cereals-and-grains",
   "pulses-and-legumes",
@@ -13,6 +15,12 @@ function freezeIngredient(ingredient) {
   return Object.freeze({
     ...ingredient,
     nutritionPer100g: Object.freeze({ ...ingredient.nutritionPer100g }),
+    nutritionUnits: Object.freeze(Object.fromEntries(
+      Object.keys(ingredient.nutritionPer100g).map((nutrient) => [
+        nutrient,
+        nutritionUnits[nutrient],
+      ])
+    )),
     source: Object.freeze({ ...ingredient.source }),
     missingRequiredNutrients: Object.freeze([...ingredient.missingRequiredNutrients]),
   });

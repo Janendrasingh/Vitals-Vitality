@@ -34,6 +34,12 @@ import {
 } from "../firebase/dashboardRepository";
 import { useFitnessIntegration } from "../fitness/useFitnessIntegration";
 import { calculateNutritionTargets } from "../nutrition/nutritionCalculator";
+import { calculateDailyNutritionBalance } from "../nutrition/dailyNutritionBalance";
+import {
+  DEFAULT_MEAL_DISTRIBUTION,
+  generateDailyMealPlan,
+  replaceDailyMealPlanItem,
+} from "../nutrition/dailyMealPlan";
 import {
   calculateMealNutrition,
   nutritionNutrientLabels,
@@ -190,7 +196,17 @@ function recommendationWorkoutType(activityType) {
   return "recovery";
 }
 
-function getMealSuggestions({ diets, allergies, preferences, activity, nutrition, remainingCalories, remainingMacros }) {
+function getMealSuggestions({
+  diets,
+  allergies,
+  preferences,
+  activity,
+  nutrition,
+  remainingCalories,
+  remainingMacros,
+  consumedMealIds,
+  consumedMealNames,
+}) {
   const latestWorkout = activity.allWorkouts.at(-1);
   const result = recommendMeals({
     source: mealCatalog,
@@ -205,6 +221,8 @@ function getMealSuggestions({ diets, allergies, preferences, activity, nutrition
     diets,
     allergies,
     preferences,
+    consumedMealIds,
+    consumedMealNames,
     activity: {
       intensity: activity.intensity,
       latestWorkoutType: latestWorkout?.type,
@@ -226,10 +244,6 @@ function getMealSuggestions({ diets, allergies, preferences, activity, nutrition
         ? `Activity context includes ${activity.steps.toLocaleString()} steps. Activity calories are not added to your calorie target.`
         : "No fitness activity is available today; your estimated calorie target is based on your selected usual activity level."}`,
   };
-}
-
-function getMealCalories(meals) {
-  return meals.reduce((total, meal) => total + (Number(meal.calories) || 0), 0);
 }
 
 function getLoggedMacroTotal(meals, field) {
@@ -514,6 +528,8 @@ export default function Dashboard({
   const [modal, setModal] = useState(null);
   const [notice, setNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mealDistribution, setMealDistribution] = useState(() => ({ ...DEFAULT_MEAL_DISTRIBUTION }));
+  const [mealPlanOverride, setMealPlanOverride] = useState(null);
   const [planSaveState, setPlanSaveState] = useState({
     planKey: null,
     status: "loading",
@@ -523,29 +539,29 @@ export default function Dashboard({
   const fitness = useFitnessIntegration(userId);
   const { meals, waterGlasses, weightEntries, workouts, steps } = dashboardData;
   const calorieGoal = nutrition.calorieTarget;
-  const consumed = getMealCalories(meals);
-  const caloriesLeft = calorieGoal === null ? null : Math.max(calorieGoal - consumed, 0);
-  const calorieProgress = calorieGoal ? Math.min((consumed / calorieGoal) * 100, 100) : 0;
+  const nutritionBalance = calculateDailyNutritionBalance(nutrition, meals);
+  const consumed = nutritionBalance.consumed.calories;
+  const caloriesLeft = nutritionBalance.remaining.calories;
+  const calorieProgress = Number.isFinite(consumed) && calorieGoal
+    ? Math.min((consumed / calorieGoal) * 100, 100)
+    : 0;
   const consumedMacros = {
-    protein: getLoggedMacroTotal(meals, "protein"),
-    carbs: getLoggedMacroTotal(meals, "carbs"),
-    fat: getLoggedMacroTotal(meals, "fat"),
+    protein: nutritionBalance.consumed.protein,
+    carbs: nutritionBalance.consumed.carbohydrates,
+    fat: nutritionBalance.consumed.fat,
     fiber: getLoggedMacroTotal(meals, "fiber"),
   };
   const remainingMacros = {
-    protein: consumedMacros.protein === null || nutrition.proteinTarget === null
-      ? null
-      : Math.max(nutrition.proteinTarget - consumedMacros.protein, 0),
-    carbs: consumedMacros.carbs === null || nutrition.carbohydrateTarget === null
-      ? null
-      : Math.max(nutrition.carbohydrateTarget - consumedMacros.carbs, 0),
-    fat: consumedMacros.fat === null || nutrition.fatTarget === null
-      ? null
-      : Math.max(nutrition.fatTarget - consumedMacros.fat, 0),
+    protein: nutritionBalance.remaining.protein,
+    carbs: nutritionBalance.remaining.carbohydrates,
+    fat: nutritionBalance.remaining.fat,
   };
   const displayName = firstName(userData);
   const diets = (Array.isArray(userData?.diets) ? userData.diets : []).filter(Boolean);
-  const allergies = [...(userData?.allergies || []), ...(userData?.customAllergies || [])].filter(Boolean);
+  const allergies = [
+    ...(Array.isArray(userData?.allergies) ? userData.allergies : []),
+    ...(Array.isArray(userData?.customAllergies) ? userData.customAllergies : []),
+  ].filter(Boolean);
   const foodPreferences = (Array.isArray(userData?.foodPreferences) ? userData.foodPreferences : []).filter(Boolean);
   const activity = getActivitySummary(workouts, steps, fitness.daily, fitness.workouts);
   const suggestions = getMealSuggestions({
@@ -556,7 +572,39 @@ export default function Dashboard({
     nutrition,
     remainingCalories: caloriesLeft,
     remainingMacros,
+    consumedMealIds: meals.map((meal) => meal.id),
+    consumedMealNames: meals.map((meal) => meal.name),
   });
+  const latestWorkout = activity.allWorkouts.at(-1);
+  const recommendationActivity = {
+    intensity: activity.intensity,
+    latestWorkoutType: latestWorkout?.type,
+  };
+  const dailyMealPlanKey = JSON.stringify({
+    userId,
+    targets: nutrition,
+    meals: meals.map(({ id, name, calories, protein, carbs, carbohydrates, fat }) => ({
+      id, name, calories, protein, carbs, carbohydrates, fat,
+    })),
+    diets,
+    allergies,
+    foodPreferences,
+    activity: recommendationActivity,
+    distribution: mealDistribution,
+  });
+  const generatedDailyMealPlan = generateDailyMealPlan({
+    source: mealCatalog,
+    targets: nutrition,
+    loggedMeals: meals,
+    diets,
+    allergies,
+    preferences: foodPreferences,
+    activity: recommendationActivity,
+    distribution: mealDistribution,
+  });
+  const dailyMealPlan = mealPlanOverride?.key === dailyMealPlanKey
+    ? mealPlanOverride.plan
+    : generatedDailyMealPlan;
   const targetWeight = Number(userData?.targetWeight) || 0;
   const currentWeight = Number(userData?.weight) || 0;
   const today = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
@@ -579,6 +627,37 @@ export default function Dashboard({
     ? "unavailable"
     : planSaveState.planKey === planKey ? planSaveState.status : "loading";
   const planSaveError = planSaveState.planKey === planKey ? planSaveState.error : "";
+
+  function updateMealDistribution(key, value) {
+    const percentage = value === "" ? 0 : Number(value);
+    if (!Number.isFinite(percentage)) return;
+    setMealDistribution((previous) => ({
+      ...previous,
+      [key]: Math.min(Math.max(percentage, 0), 100),
+    }));
+    setMealPlanOverride(null);
+  }
+
+  function replacePlannedMeal(slotId) {
+    const updatedPlan = replaceDailyMealPlanItem({
+      plan: dailyMealPlan,
+      slotId,
+      source: mealCatalog,
+      targets: nutrition,
+      loggedMeals: meals,
+      diets,
+      allergies,
+      preferences: foodPreferences,
+      activity: recommendationActivity,
+    });
+    if (updatedPlan.replacementError) {
+      setNotice(updatedPlan.replacementError);
+      return;
+    }
+    setMealPlanOverride({ key: dailyMealPlanKey, plan: updatedPlan });
+    const replacement = updatedPlan.slots.find((slot) => slot.id === slotId)?.recommendation;
+    setNotice(replacement ? `${replacement.name} replaced the planned meal.` : "The meal was not replaced.");
+  }
 
   useEffect(() => {
     localStorage.setItem(`vitalsDashboard:${userId}`, JSON.stringify(dashboardData));
@@ -869,6 +948,7 @@ export default function Dashboard({
             caloriesLeft={caloriesLeft}
             calorieGoal={calorieGoal}
             calorieProgress={calorieProgress}
+            consumedCalories={consumed}
             consumedMacros={consumedMacros}
             remainingMacros={remainingMacros}
             allergies={allergies}
@@ -886,6 +966,10 @@ export default function Dashboard({
             carbsGoal={carbsGoal}
             nutrition={nutrition}
             planSaveStatus={planSaveStatus}
+            dailyMealPlan={dailyMealPlan}
+            mealDistribution={mealDistribution}
+            onMealDistributionChange={updateMealDistribution}
+            onReplacePlannedMeal={replacePlannedMeal}
           />
         )}
         {view === "meals" && (
@@ -897,6 +981,10 @@ export default function Dashboard({
             suggestions={suggestions}
             calorieGoal={calorieGoal}
             consumed={consumed}
+            dailyMealPlan={dailyMealPlan}
+            mealDistribution={mealDistribution}
+            onMealDistributionChange={updateMealDistribution}
+            onReplacePlannedMeal={replacePlannedMeal}
           />
         )}
         {view === "recipes" && <RecipesPage catalog={mealCatalog} onAddMeal={addSuggestedMeal} suggestions={suggestions} />}
@@ -939,30 +1027,38 @@ function PageHeader({ eyebrow, title, description, action }) {
 }
 
 function DashboardHome({
-  activity, addSuggestedMeal, addWater, caloriesLeft, calorieGoal, calorieProgress, consumedMacros,
+  activity, addSuggestedMeal, addWater, caloriesLeft, calorieGoal, calorieProgress, consumedCalories, consumedMacros,
   allergies, diets, foodPreferences, displayName, fatGoal, meals, notice, onLogMeal, proteinGoal, suggestions, today, waterGlasses, carbsGoal,
-  remainingMacros, onRemoveMeal,
-  nutrition, planSaveStatus,
+  remainingMacros, onRemoveMeal, nutrition, planSaveStatus, dailyMealPlan, mealDistribution,
+  onMealDistributionChange, onReplacePlannedMeal,
 }) {
   return (
     <>
       <PageHeader
         action={<button className="dashboard-primary-button" onClick={onLogMeal} type="button"><CirclePlus size={18} /> Log Meal</button>}
-        description={calorieGoal !== null ? `You've logged ${Math.round(calorieProgress)}% of your estimated daily target.` : nutrition.error}
+        description={calorieGoal === null
+          ? nutrition.error
+          : Number.isFinite(consumedCalories)
+            ? `You've logged ${Math.round(calorieProgress)}% of your estimated daily target.`
+            : "Logged calories are unavailable because a meal entry is missing valid calorie data."}
         eyebrow={today}
         title={`Good morning, ${displayName}.`}
       />
       <section aria-label="Daily nutrition and hydration" className="dashboard-overview-grid">
         <article className="dashboard-nutrition-card">
           <div
-            aria-label={calorieGoal !== null ? `${caloriesLeft.toLocaleString()} calories left of ${calorieGoal.toLocaleString()}` : "Set up your profile to calculate calorie needs"}
+            aria-label={calorieGoal === null
+              ? "Set up your profile to calculate calorie needs"
+              : Number.isFinite(caloriesLeft)
+                ? `${caloriesLeft.toLocaleString()} calories left of ${calorieGoal.toLocaleString()}`
+                : "Calories remaining unavailable because a logged meal has incomplete calorie data"}
             className="dashboard-calorie-ring"
             role="img"
             style={{ "--progress": `${calorieProgress}%` }}
           >
             <div className="dashboard-calorie-ring-inner">
-              <strong>{calorieGoal !== null ? caloriesLeft.toLocaleString() : "--"}</strong>
-              <span>{calorieGoal !== null ? "KCAL LEFT" : "SET GOAL"}</span>
+              <strong>{Number.isFinite(caloriesLeft) ? caloriesLeft.toLocaleString() : "--"}</strong>
+              <span>{calorieGoal === null ? "SET GOAL" : Number.isFinite(caloriesLeft) ? "KCAL LEFT" : "KCAL UNKNOWN"}</span>
             </div>
           </div>
           <div className="dashboard-nutrients">
@@ -993,12 +1089,20 @@ function DashboardHome({
         {calorieGoal !== null
           ? `Estimated calorie target: ${calorieGoal.toLocaleString()} kcal/day · BMR ${nutrition.bmr.toLocaleString()} kcal · TDEE ${nutrition.tdee.toLocaleString()} kcal. Your target uses your usual activity level; synced active calories are not added again. This estimate is not medical advice.`
           : nutrition.error}
-        {planSaveStatus === "saved" && <span> Daily plan saved to your account.</span>}
+        {planSaveStatus === "saved" && <span> Daily nutrition targets saved to your account.</span>}
       </p>
+      <DailyMealPlanSection
+        distribution={mealDistribution}
+        onDistributionChange={onMealDistributionChange}
+        onReplaceMeal={onReplacePlannedMeal}
+        plan={dailyMealPlan}
+      />
       <section aria-labelledby="meal-log-title" className="dashboard-meal-section">
         <div className="dashboard-section-heading">
           <div><p className="dashboard-eyebrow">{meals.length} meals logged · {activity.stepsAvailable ? `${activity.stepsSource === "manual" ? "manual " : ""}${activity.steps.toLocaleString()} steps` : "no step data"}</p><h2 id="meal-log-title">Today&apos;s Meal Log</h2></div>
-          <span className="dashboard-meal-summary">{getMealCalories(meals).toLocaleString()} kcal logged</span>
+          <span className="dashboard-meal-summary">
+            {Number.isFinite(consumedCalories) ? `${consumedCalories.toLocaleString()} kcal logged` : "Calories incomplete"}
+          </span>
         </div>
         {meals.length ? (
           <div className="dashboard-meal-grid">
@@ -1035,6 +1139,133 @@ function DashboardHome({
         </p>
       </section>
     </>
+  );
+}
+
+function DailyMealPlanSection({ distribution, onDistributionChange, onReplaceMeal, plan }) {
+  const distributionTotal = Object.values(distribution).reduce((sum, value) => sum + value, 0);
+  const distributionIsValid = Math.abs(distributionTotal - 100) < 0.01;
+  const formatNutrient = (value, suffix = "g") =>
+    Number.isFinite(value) ? `${Math.round(value * 10) / 10}${suffix}` : "--";
+  const slots = [
+    ["breakfast", "Breakfast"],
+    ["midMorningSnack", "Mid-morning snack"],
+    ["lunch", "Lunch"],
+    ["eveningSnack", "Evening snack"],
+    ["dinner", "Dinner"],
+  ];
+
+  return (
+    <section aria-labelledby="daily-plan-title" className="dashboard-data-section dashboard-daily-plan">
+      <div className="dashboard-section-heading">
+        <div>
+          <p className="dashboard-eyebrow"><Sparkles size={13} /> Personalized daily plan</p>
+          <h2 id="daily-plan-title">Five flexible meal slots</h2>
+          <p className="dashboard-section-subtitle">
+            Suggested portions use your remaining daily targets and preferences. This flexible distribution is not a medical prescription.
+          </p>
+        </div>
+        <span className="dashboard-meal-summary">
+          {plan.filledSlots} of {plan.totalSlots} verified meals
+        </span>
+      </div>
+
+      <details className="dashboard-plan-distribution">
+        <summary>Adjust calorie distribution</summary>
+        <div className="dashboard-plan-distribution-grid">
+          {slots.map(([key, label]) => (
+            <label key={key}>
+              <span>{label}</span>
+              <span className="dashboard-plan-percent-input">
+                <input
+                  aria-label={`${label} calorie share percentage`}
+                  max="100"
+                  min="1"
+                  onChange={(event) => onDistributionChange(key, event.target.value)}
+                  step="1"
+                  type="number"
+                  value={distribution[key]}
+                />
+                %
+              </span>
+            </label>
+          ))}
+        </div>
+        <p aria-live="polite">
+          Shares total {distributionTotal}%. They must add up to 100% to generate a plan.
+        </p>
+      </details>
+
+      {!distributionIsValid && (
+        <p aria-live="polite" className="dashboard-plan-empty">
+          Adjust the meal shares so they total 100% before generating recommendations.
+        </p>
+      )}
+      {distributionIsValid && plan.filledSlots === 0 && (
+        <p aria-live="polite" className="dashboard-plan-empty">
+          {plan.reason || "More verified recipes are needed before a daily meal plan can be completed."}
+        </p>
+      )}
+      {plan.replacementError && (
+        <p aria-live="polite" className="dashboard-plan-empty">{plan.replacementError}</p>
+      )}
+
+      <div className="dashboard-plan-meal-grid">
+        {plan.slots.map((slot) => {
+          const meal = slot.recommendation;
+          return (
+            <article className="dashboard-plan-meal-card" key={slot.id}>
+              <span className="dashboard-suggestion-badge">{slot.label}</span>
+              {meal ? (
+                <>
+                  <h3>{meal.name}</h3>
+                  <p>{meal.portionSize || "Serving size not supplied"}</p>
+                  <span className="dashboard-plan-verification">
+                    Verification: {meal.verificationStatus} · {meal.nutritionCoverage} nutrition · {meal.allergenInformationStatus} allergen data
+                  </span>
+                  <div className="dashboard-suggestion-macros">
+                    <strong>{formatNutrient(meal.calories, " kcal")}</strong>
+                    <span>{formatNutrient(meal.protein)} protein</span>
+                    <span>{formatNutrient(meal.carbohydrates)} carbohydrates</span>
+                    <span>{formatNutrient(meal.fat)} fat</span>
+                  </div>
+                  <p className="dashboard-food-source">
+                    Recipe source: <a href={meal.sourceUrl} rel="noreferrer" target="_blank">{meal.sourceName}</a>
+                    {meal.sourceReference ? ` · Reference: ${meal.sourceReference}` : ""}
+                  </p>
+                  <button
+                    className="dashboard-text-action"
+                    onClick={() => onReplaceMeal(slot.id)}
+                    type="button"
+                  >
+                    Replace meal <ChevronRight size={15} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <h3>No verified option</h3>
+                  <p>More verified recipes are needed for this meal category.</p>
+                </>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
+      <div aria-label="Meal plan nutrition summary" className="dashboard-plan-summary-grid">
+        <div><span>Plan calories</span><strong>{plan.filledSlots ? formatNutrient(plan.planTotals.calories, " kcal") : "--"}</strong></div>
+        <div><span>Plan protein</span><strong>{plan.filledSlots ? formatNutrient(plan.planTotals.protein) : "--"}</strong></div>
+        <div><span>Plan carbohydrates</span><strong>{plan.filledSlots ? formatNutrient(plan.planTotals.carbohydrates) : "--"}</strong></div>
+        <div><span>Plan fat</span><strong>{plan.filledSlots ? formatNutrient(plan.planTotals.fat) : "--"}</strong></div>
+      </div>
+      <p className="dashboard-plan-remaining">
+        Remaining after logged and planned meals:{" "}
+        {formatNutrient(plan.dailyBalance.remaining.calories, " kcal")} ·{" "}
+        {formatNutrient(plan.dailyBalance.remaining.protein)} protein ·{" "}
+        {formatNutrient(plan.dailyBalance.remaining.carbohydrates)} carbohydrates ·{" "}
+        {formatNutrient(plan.dailyBalance.remaining.fat)} fat
+      </p>
+    </section>
   );
 }
 
@@ -1076,6 +1307,7 @@ function MealRecommendationCard({ onAddMeal, slot }) {
       <span className="dashboard-suggestion-badge">{slot.label}</span>
       <h3>{meal.name}</h3>
       <p>{meal.portionSize}</p>
+      <p className="dashboard-food-source">Verified nutrition · allergen information complete</p>
       <div className="dashboard-suggestion-macros">
         <strong>{meal.calories} <span>kcal</span></strong>
         <span>{meal.protein}g protein</span>
@@ -1096,14 +1328,14 @@ function MealRecommendationCard({ onAddMeal, slot }) {
 }
 
 function MealCard({ meal, onRemove }) {
-  const macroLabel = (value) => value === null || value === undefined ? "--" : value;
+  const macroLabel = (value) => value === null || value === undefined || value === "" ? "--" : value;
   return (
     <article className="dashboard-meal-card">
       <div className="dashboard-meal-image dashboard-meal-image-empty"><span>{meal.suggested ? "Suggested" : "Logged today"}</span></div>
       <div className="dashboard-meal-details">
         <div><h3>{meal.name}</h3><p>P {macroLabel(meal.protein)}g · C {macroLabel(meal.carbs)}g · F {macroLabel(meal.fat)}g{meal.fiber === null || meal.fiber === undefined ? "" : ` · Fibre ${meal.fiber}g`}</p></div>
         <div className="dashboard-meal-actions">
-          <strong>{meal.calories}<span>kcal</span></strong>
+          <strong>{macroLabel(meal.calories)}<span>kcal</span></strong>
           {onRemove && (
             <button
               aria-label={`Remove ${meal.name}`}
@@ -1120,7 +1352,10 @@ function MealCard({ meal, onRemove }) {
   );
 }
 
-function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, onRemoveMeal, suggestions, calorieGoal, consumed }) {
+function MealPlannerPage({
+  addSuggestedMeal, meals, onLogMeal, onRemoveMeal, suggestions, calorieGoal, consumed,
+  dailyMealPlan, mealDistribution, onMealDistributionChange, onReplacePlannedMeal,
+}) {
   return (
     <>
       <PageHeader
@@ -1131,9 +1366,15 @@ function MealPlannerPage({ addSuggestedMeal, meals, onLogMeal, onRemoveMeal, sug
       />
       <div className="dashboard-stat-strip">
         <StatCard label="Estimated daily target" value={calorieGoal !== null ? `${calorieGoal.toLocaleString()} kcal` : "Set profile"} />
-        <StatCard label="Calories logged" value={`${consumed.toLocaleString()} kcal`} />
+        <StatCard label="Calories logged" value={Number.isFinite(consumed) ? `${consumed.toLocaleString()} kcal` : "Incomplete log"} />
         <StatCard label="Meals logged" value={String(meals.length)} />
       </div>
+      <DailyMealPlanSection
+        distribution={mealDistribution}
+        onDistributionChange={onMealDistributionChange}
+        onReplaceMeal={onReplacePlannedMeal}
+        plan={dailyMealPlan}
+      />
       <section className="dashboard-data-section">
         <SectionHeading eyebrow="Recommended next" title={suggestions.title} />
         <p className="dashboard-section-subtitle">{suggestions.subtitle}</p>
