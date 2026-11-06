@@ -344,8 +344,11 @@ test("imports distinct source-cited food records without treating missing values
     "spices",
   ]));
   for (const ingredient of ingredients) {
-    assert.ok(ingredient.source.sourceReference.includes("FDC food ID"));
+    assert.ok(ingredient.source.sourceReference);
     assert.match(ingredient.source.sourceUrl, /^https:\/\//);
+    if (ingredient.source.sourceRecordId) {
+      assert.equal(ingredient.source.datasetVersion !== undefined, true);
+    }
     const complete = ["calories", "protein", "carbohydrates", "fat", "fibre"]
       .every((key) => Number.isFinite(ingredient.nutritionPer100g[key]));
     assert.equal(ingredient.verificationStatus === "verified", complete);

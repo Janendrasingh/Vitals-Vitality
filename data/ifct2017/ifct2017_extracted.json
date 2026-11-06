@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "status": "nutrient-table-extraction-withheld",
+  "source": {
+    "name": "Indian Food Composition Tables 2017",
+    "publisher": "National Institute of Nutrition, Indian Council of Medical Research",
+    "officialUrl": "https://www.nin.res.in/ebooks/IFCT2017.pdf",
+    "pdfBytes": 12401190,
+    "pdfSha256": "7fc5a5112a57240d25bf695dca82cccd8d93ed54e8c39530e42b5ad1820d0e8c",
+    "pdfPageCount": 585
+  },
+  "extraction": {
+    "library": "PyMuPDF 2.1",
+    "pagesProcessed": 585,
+    "pagesWithMoreThan100SelectableTextCharacters": 550,
+    "pagesWithSparseOrNoSelectableText": 35,
+    "nutrientRecordsExtracted": 0,
+    "reason": "The publication's copyright notice restricts electronic storage or reproduction for creating a product without prior written permission. Nutrient tables are therefore not copied into this project."
+  },
+  "records": []
+}

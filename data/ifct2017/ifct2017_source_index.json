@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "indexType": "limited ingredient candidate locator; not a nutrient dataset",
+  "source": {
+    "name": "Indian Food Composition Tables 2017",
+    "publisher": "National Institute of Nutrition, Indian Council of Medical Research",
+    "officialUrl": "https://www.nin.res.in/ebooks/IFCT2017.pdf",
+    "citation": "Longvah, T., Ananthan, R., Bhaskarachary, K. and Venkaiah, K. (2017). Indian Food Composition Tables 2017. National Institute of Nutrition, Indian Council of Medical Research, Hyderabad.",
+    "pdfPageNumbering": "One-based physical page numbers in the downloaded PDF.",
+    "pdfBytes": 12401190,
+    "pdfSha256": "7fc5a5112a57240d25bf695dca82cccd8d93ed54e8c39530e42b5ad1820d0e8c",
+    "pdfPageCount": 585
+  },
+  "extraction": {
+    "library": "PyMuPDF 2.1",
+    "pagesProcessed": 585,
+    "pagesWithMoreThan100SelectableTextCharacters": 550,
+    "pagesWithSparseOrNoSelectableText": 35,
+    "nutrientValuesStored": false,
+    "note": "The source PDF copyright notice restricts electronic storage or reproduction for creating a product without prior written permission. This limited locator index contains only food-name/code references needed for the requested ingredient review; it does not reproduce nutrient values."
+  },
+  "tableLocators": [
+    {
+      "tableNumber": 1,
+      "tableTitle": "Proximate Principles and Dietary Fibre",
+      "tableHeadingPdfPage": 41,
+      "contentsPdfPage": 7,
+      "note": "Candidate food rows were located in this table. Nutrient cells were not transcribed or validated."
+    }
+  ],
+  "candidateRecords": [
+    {
+      "ifctCode": "B001",
+      "originalFoodName": "Bengal gram, dal (Cicer arietinum)",
+      "tableNumber": 1,
+      "tablePdfPage": 42,
+      "foodIndexPdfPage": 482,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "B003",
+      "originalFoodName": "Black gram, dal (Phaseolus mungo)",
+      "tableNumber": 1,
+      "tablePdfPage": 42,
+      "foodIndexPdfPage": 482,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "B010",
+      "originalFoodName": "Green gram, dal (Vigna radiata)",
+      "tableNumber": 1,
+      "tablePdfPage": 42,
+      "foodIndexPdfPage": 483,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "C020",
+      "originalFoodName": "Fenugreek leaves (Trigonella foenum-graecum)",
+      "tableNumber": 1,
+      "tablePdfPage": 44,
+      "foodIndexPdfPage": 489,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "G010",
+      "originalFoodName": "Curry leaves (Murraya koenigii)",
+      "tableNumber": 1,
+      "tablePdfPage": 54,
+      "foodIndexPdfPage": 520,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "G019",
+      "originalFoodName": "Asafoetida (Ferula assa-foetida)",
+      "tableNumber": 1,
+      "tablePdfPage": 54,
+      "foodIndexPdfPage": 522,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "G022",
+      "originalFoodName": "Chillies, red (Capsicum annum)",
+      "tableNumber": 1,
+      "tablePdfPage": 54,
+      "foodIndexPdfPage": 522,
+      "nutrientValuesStored": false
+    },
+    {
+      "ifctCode": "H013",
+      "originalFoodName": "Mustard, seeds (Brassica nigra)",
+      "tableNumber": 1,
+      "tablePdfPage": 55,
+      "foodIndexPdfPage": 526,
+      "nutrientValuesStored": false
+    }
+  ],
+  "ingredientMatches": [
+    {
+      "ingredient": "Chana dal",
+      "classification": "possible",
+      "candidateIfctCode": "B001",
+      "reason": "Bengal gram dal is a distinct Bengal-gram food record, but the reviewed name does not establish split/dehulled state."
+    },
+    {
+      "ingredient": "Urad dal (split black gram)",
+      "classification": "possible",
+      "candidateIfctCode": "B003",
+      "reason": "Black gram dal is a relevant pulse-form candidate; split and skin status need form-level review."
+    },
+    {
+      "ingredient": "Moong dal (split mung bean)",
+      "classification": "possible",
+      "candidateIfctCode": "B010",
+      "reason": "Green gram dal is distinct from whole green gram, but the reviewed name does not establish the requested split/dehulled form."
+    },
+    {
+      "ingredient": "Curry leaves",
+      "classification": "exact",
+      "candidateIfctCode": "G010",
+      "reason": "The IFCT food name and botanical identity match curry leaves. This is an identity match only; no nutrient values are imported."
+    },
+    {
+      "ingredient": "Asafoetida",
+      "classification": "possible",
+      "candidateIfctCode": "G019",
+      "reason": "The food name and botanical identity are relevant, but the ingredient record does not establish whether the source form matches compounded commercial hing."
+    },
+    {
+      "ingredient": "Kasuri methi (dried fenugreek leaves)",
+      "classification": "possible",
+      "candidateIfctCode": "C020",
+      "reason": "Fenugreek leaves are a botanical match, but IFCT's preface says food-component data are raw except eggs; this is not an exact dried-leaf match."
+    },
+    {
+      "ingredient": "Garam masala",
+      "classification": "unavailable",
+      "candidateIfctCode": null,
+      "reason": "No matching compound spice blend was found in the full-text search."
+    },
+    {
+      "ingredient": "Amchur (dried mango powder)",
+      "classification": "unavailable",
+      "candidateIfctCode": null,
+      "reason": "No matching dried mango powder record was found; other mango forms are not substitutes."
+    },
+    {
+      "ingredient": "Kashmiri chili powder",
+      "classification": "unavailable",
+      "candidateIfctCode": "G022",
+      "reason": "Generic red chillies do not establish Kashmiri cultivar or dried/powder preparation."
+    },
+    {
+      "ingredient": "Whole mustard seeds",
+      "classification": "possible",
+      "candidateIfctCode": "H013",
+      "reason": "The IFCT candidate is specifically Brassica nigra seed; species and whole-versus-ground use need review against the recipe ingredient."
+    },
+    {
+      "ingredient": "Ginger-garlic paste",
+      "classification": "unavailable",
+      "candidateIfctCode": null,
+      "reason": "No exact compound paste record was found; separate ginger and garlic records are not a substitute."
+    },
+    {
+      "ingredient": "Indian tej patta",
+      "classification": "unavailable",
+      "candidateIfctCode": null,
+      "reason": "No matching tej patta or bay-leaf record was found; unrelated leaf records are not substitutes."
+    }
+  ],
+  "counts": {
+    "requestedIngredientIdentities": 12,
+    "exactIdentityCandidates": 1,
+    "possibleManualReviewCandidates": 6,
+    "unavailable": 5,
+    "distinctSourceFoodLocators": 8,
+    "nutrientRecordsExtracted": 0
+  }
+}

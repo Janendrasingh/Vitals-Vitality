@@ -402,7 +402,7 @@ export const recipes = Object.freeze([
       item("heavy-cream", 45, "3 tablespoons optional cream; USDA FDC 1 tablespoon = 15 g"),
       item("cumin-seeds", 0.3, "1/8 teaspoon optional cumin; approximate gram conversion"),
     ],
-    unmappedIngredients: ["oil or butter", "ginger garlic paste", "garam masala", "kasuri methi", "water", "green cardamom", "cinnamon", "cloves"],
+    unmappedIngredients: ["oil or butter", "ginger garlic paste", "garam masala", "kasuri methi", "water for blending spinach", "water for gravy", "green cardamom", "cinnamon", "cloves"],
     cookingMethod: [
       "Wash and drain the spinach. The source offers sauteing it with chilies and cashews or blanching it; cool and blend the spinach with water.",
       "Temper whole spices in oil and butter, cook onion, ginger garlic paste, and tomato, then add garam masala and water and cook until the onions are soft.",

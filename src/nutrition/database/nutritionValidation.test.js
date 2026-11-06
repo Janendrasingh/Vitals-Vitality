@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ingredients } from "./ingredients.js";
+import { nutritionSources } from "./nutritionSources.js";
 import { recipes } from "./recipes.js";
 import { calculateMealNutrition } from "./nutritionCalculator.js";
 import {
@@ -86,13 +87,107 @@ test("validates the current source-cited ingredient database", () => {
   const result = validateIngredientRecords(ingredients);
 
   assert.equal(result.valid, true, result.errors.join(" "));
-  assert.equal(ingredients.length, 73);
+  assert.equal(ingredients.length, 77);
   assert.equal(new Set(ingredients.map(({ id }) => id)).size, ingredients.length);
   assert.ok(ingredients.every((ingredient) =>
     Object.keys(ingredient.nutritionPer100g).every((key) =>
       ingredient.nutritionUnits[key] !== undefined
     )
   ));
+});
+
+test("imports distinct raw split pulse forms with CoFID provenance and unavailable nutrients", () => {
+  const expected = new Map([
+    ["urad-dal-chilki-split-dried-raw", {
+      code: "13-058",
+      calories: 287,
+      protein: 26.0,
+      carbohydrates: 42.5,
+      fat: 1.4,
+      sugars: 1.3,
+      calcium: 130,
+      preparation: "split, partial seed coat (chilki)",
+    }],
+    ["urad-dal-duhli-split-dried-raw", {
+      code: "13-060",
+      calories: 298,
+      protein: 27.2,
+      carbohydrates: 44.0,
+      fat: 1.4,
+      sugars: 1.3,
+      calcium: 72,
+      preparation: "split, dehulled (duhli; no seed coat)",
+    }],
+    ["moong-dal-split-dried-raw", {
+      code: "13-098",
+      calories: 291,
+      protein: 26.8,
+      carbohydrates: 46.3,
+      fat: 1.1,
+      sugars: 1.5,
+      calcium: 35,
+      preparation: "split, dehulled (no seed coat)",
+    }],
+  ]);
+  const ingredientById = new Map(ingredients.map((ingredient) => [ingredient.id, ingredient]));
+
+  for (const [id, record] of expected) {
+    const ingredient = ingredientById.get(id);
+    assert.ok(ingredient, `${id} exists`);
+    assert.equal(ingredient.category, "pulses-and-legumes");
+    assert.equal(ingredient.preparationState, "dry");
+    assert.equal(ingredient.foodForm, record.preparation);
+    assert.equal(ingredient.quantityBasis, "edible-portion");
+    assert.deepEqual(
+      Object.fromEntries(["calories", "protein", "carbohydrates", "fat", "sugars", "calcium"]
+        .map((key) => [key, ingredient.nutritionPer100g[key]])),
+      {
+        calories: record.calories,
+        protein: record.protein,
+        carbohydrates: record.carbohydrates,
+        fat: record.fat,
+        sugars: record.sugars,
+        calcium: record.calcium,
+      }
+    );
+    assert.equal(ingredient.nutritionPer100g.fibre, null);
+    assert.deepEqual(ingredient.missingRequiredNutrients, ["fibre"]);
+    assert.equal(ingredient.nutritionUnits.fibre, "g");
+    assert.equal(ingredient.verificationStatus, "unverified");
+    assert.equal(ingredient.source.sourceRecordId, record.code);
+    assert.equal(ingredient.source.datasetName, "McCance and Widdowson's Composition of Foods Integrated Dataset");
+    assert.equal(ingredient.source.datasetVersion, "2021");
+    assert.equal(ingredient.source.nutrientBasis, "per 100 g of food");
+    assert.match(ingredient.source.sourceUrl, /^https:\/\/assets\.publishing\.service\.gov\.uk\//);
+    assert.match(ingredient.source.sourceReference, new RegExp(`CoFID food code ${record.code}:`));
+    assert.equal(ingredient.source.license, "Open Government Licence v3.0, except where otherwise stated");
+    assert.match(ingredient.source.attribution, /Open Government Licence v3\.0/);
+    assert.equal(ingredient.nutritionPer100g.vitaminB12, 0);
+    assert.equal(ingredient.nutritionPer100g.vitaminC, null);
+
+    const validation = validateIngredientRecords([ingredient]);
+    assert.equal(validation.valid, true, validation.errors.join(" "));
+    assert.ok(validation.warnings.some((warning) => /missing required nutrients: fibre/.test(warning)));
+
+    const calculation = calculateMealNutrition([
+      { ingredientId: id, quantityGrams: 100 },
+    ], ingredients);
+    assert.equal(calculation.available, false);
+    assert.match(calculation.errors.join(" "), /fibre/);
+
+    assert.equal(recipes.some((recipe) =>
+      recipe.ingredients.some((item) => item.ingredientId === id)
+    ), false);
+  }
+
+  const imported = [...expected.keys()].map((id) => ingredientById.get(id));
+  assert.equal(new Set(imported.map(({ id }) => id)).size, imported.length);
+  assert.equal(new Set(imported.map(({ name }) => name.trim().toLocaleLowerCase())).size, imported.length);
+  assert.equal(ingredientById.get("mung-beans").nutritionPer100g.calories, 347);
+  assert.equal(ingredientById.get("mung-beans").foodForm, undefined);
+  assert.equal(nutritionSources.ukCofid2021.id, "uk-cofid-2021");
+  assert.equal(nutritionSources.ukCofid2021.status, "selected-records-imported");
+  assert.equal(recipes.every((recipe) => recipe.verificationStatus === "estimated"), true);
 });
 
 test("adds source-cited USDA spice records without claiming recipe-form matches", () => {
@@ -124,6 +219,49 @@ test("adds source-cited USDA spice records without claiming recipe-form matches"
   assert.ok(recipes.find(({ id }) => id === "palak-paneer").unmappedIngredients.includes("cinnamon"));
   assert.ok(recipes.find(({ id }) => id === "palak-paneer").unmappedIngredients.includes("cloves"));
   assert.ok(recipes.find(({ id }) => id === "matar-paneer").unmappedIngredients.includes("kasuri methi"));
+});
+
+test("records generic USDA bay leaf nutrients without mapping an unknown form to Indian recipes", () => {
+  const bayLeaf = ingredients.find(({ id }) => id === "bay-leaf-generic-unspecified");
+
+  assert.ok(bayLeaf);
+  assert.equal(bayLeaf.name, "Bay leaf, generic USDA record (form unspecified)");
+  assert.equal(bayLeaf.preparationState, "unspecified");
+  assert.equal(bayLeaf.nutritionPer100g.calories, 313);
+  assert.equal(bayLeaf.nutritionPer100g.protein, 7.61);
+  assert.equal(bayLeaf.nutritionPer100g.carbohydrates, 74.97);
+  assert.equal(bayLeaf.nutritionPer100g.fat, 8.36);
+  assert.equal(bayLeaf.nutritionPer100g.fibre, 26.3);
+  assert.equal(bayLeaf.nutritionPer100g.calcium, 834);
+  assert.equal(bayLeaf.nutritionPer100g.vitaminA, 309);
+  assert.equal(bayLeaf.nutritionPer100g.folate, 180);
+  assert.equal(bayLeaf.source.sourceRecordId, "170917");
+  assert.equal(bayLeaf.source.datasetVersion, "April 2018 CSV release");
+  assert.ok(bayLeaf.source.sourceReference.includes("Spices, bay leaf"));
+  assert.ok(bayLeaf.source.sourceUrl.endsWith(".zip"));
+  assert.equal(Object.hasOwn(bayLeaf.nutritionPer100g, "sugars"), false);
+  assert.match(bayLeaf.verificationNote, /does not establish botanical species or whole versus ground form/i);
+  const calculation = calculateMealNutrition([
+    { ingredientId: bayLeaf.id, quantityGrams: 100 },
+  ], ingredients, { servings: 2 });
+  assert.equal(calculation.available, true);
+  assert.equal(calculation.total.calories, 313);
+  assert.equal(calculation.perServing.calories, 156.5);
+  assert.equal(calculation.total.fibre, 26.3);
+  assert.equal(recipes.some((recipe) =>
+    recipe.ingredients.some(({ ingredientId }) => ingredientId === bayLeaf.id)
+  ), false);
+});
+
+test("accounts for Palak Paneer's two distinct unresolved water source rows", () => {
+  const palakPaneer = recipes.find(({ id }) => id === "palak-paneer");
+
+  assert.equal(palakPaneer.sourceIngredients.length, 18);
+  assert.equal(palakPaneer.ingredients.length, 9);
+  assert.ok(palakPaneer.unmappedIngredients.includes("water for blending spinach"));
+  assert.ok(palakPaneer.unmappedIngredients.includes("water for gravy"));
+  assert.equal(palakPaneer.unmappedIngredients.filter((name) => name.startsWith("water")).length, 2);
+  assert.equal(palakPaneer.ingredients.length + palakPaneer.unmappedIngredients.length, 18);
 });
 
 test("records original ingredient lists and yields for eight recipe sources without verifying recipe completeness", () => {
