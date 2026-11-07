@@ -1,0 +1,320 @@
+# Recipe verification blockers
+
+All recipes remain estimated and are ineligible under the existing verification gate. "Exact identity candidate" is not a verified mapping. All current mapped ingredient rows have `ingredientMatchStatus: unverified`; source ingredient coverage, quantity evidence and recipe evidence are incomplete.
+
+## Masoor Dal
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 18; mapped records: 9 (1 source-exact quantities, 8 estimated quantities); catalog-listed unmapped items: 9.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "red-lentils" source match is not verified.
+  - Ingredient "tomato" quantity is not exact.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "garlic" quantity is not exact.
+  - Ingredient "garlic" source match is not verified.
+  - Ingredient "green-chili-raw" quantity is not exact.
+  - Ingredient "green-chili-raw" source match is not verified.
+  - Ingredient "red-chili-dried" quantity is not exact.
+  - Ingredient "red-chili-dried" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "coriander-leaves-raw" quantity is not exact.
+  - Ingredient "coriander-leaves-raw" source match is not verified.
+  - Ingredient "turmeric" quantity is not exact.
+  - Ingredient "turmeric" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+
+## Chana Masala
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 20; mapped records: 7 (0 source-exact quantities, 7 estimated quantities); catalog-listed unmapped items: 13.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "chickpeas" quantity is not exact.
+  - Ingredient "chickpeas" source match is not verified.
+  - Ingredient "onion" quantity is not exact.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "tomato" quantity is not exact.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "green-chili-raw" quantity is not exact.
+  - Ingredient "green-chili-raw" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "coriander-leaves-raw" quantity is not exact.
+  - Ingredient "coriander-leaves-raw" source match is not verified.
+  - Ingredient "turmeric" quantity is not exact.
+  - Ingredient "turmeric" source match is not verified.
+
+## Rajma Masala
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 18; mapped records: 9 (3 source-exact quantities, 6 estimated quantities); catalog-listed unmapped items: 9.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "kidney-beans" source match is not verified.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+  - Ingredient "green-chili-raw" quantity is not exact.
+  - Ingredient "green-chili-raw" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "coriander-leaves-raw" quantity is not exact.
+  - Ingredient "coriander-leaves-raw" source match is not verified.
+  - Ingredient "heavy-cream" quantity is not exact.
+  - Ingredient "heavy-cream" source match is not verified.
+  - Ingredient "turmeric" quantity is not exact.
+  - Ingredient "turmeric" source match is not verified.
+
+## Aloo Gobi
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 19; mapped records: 9 (1 source-exact quantities, 8 estimated quantities); catalog-listed unmapped items: 10.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "potato" quantity is not exact.
+  - Ingredient "potato" source match is not verified.
+  - Ingredient "cauliflower" source match is not verified.
+  - Ingredient "onion" quantity is not exact.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "tomato" quantity is not exact.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "ginger" quantity is not exact.
+  - Ingredient "ginger" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "coriander-leaves-raw" quantity is not exact.
+  - Ingredient "coriander-leaves-raw" source match is not verified.
+  - Ingredient "turmeric" quantity is not exact.
+  - Ingredient "turmeric" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+
+## Vegetable Upma
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 18; mapped records: 8 (0 source-exact quantities, 8 estimated quantities); catalog-listed unmapped items: 12.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "semolina" quantity is not exact.
+  - Ingredient "semolina" source match is not verified.
+  - Ingredient "onion" quantity is not exact.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "carrot" quantity is not exact.
+  - Ingredient "carrot" source match is not verified.
+  - Ingredient "green-peas" quantity is not exact.
+  - Ingredient "green-peas" source match is not verified.
+  - Ingredient "peanuts" quantity is not exact.
+  - Ingredient "peanuts" source match is not verified.
+  - Ingredient "ginger" quantity is not exact.
+  - Ingredient "ginger" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+
+## Paneer Bhurji
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 15; mapped records: 9 (1 source-exact quantities, 8 estimated quantities); catalog-listed unmapped items: 6.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "paneer" source match is not verified.
+  - Ingredient "onion" quantity is not exact.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "tomato" quantity is not exact.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "green-peas" quantity is not exact.
+  - Ingredient "green-peas" source match is not verified.
+  - Ingredient "green-chili-raw" quantity is not exact.
+  - Ingredient "green-chili-raw" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "coriander-leaves-raw" quantity is not exact.
+  - Ingredient "coriander-leaves-raw" source match is not verified.
+  - Ingredient "turmeric" quantity is not exact.
+  - Ingredient "turmeric" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+
+## Palak Paneer
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 18; mapped records: 9 (2 source-exact quantities, 7 estimated quantities); catalog-listed unmapped items: 9.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "paneer" source match is not verified.
+  - Ingredient "spinach" quantity is not exact.
+  - Ingredient "spinach" source match is not verified.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "tomato" quantity is not exact.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "cashews" quantity is not exact.
+  - Ingredient "cashews" source match is not verified.
+  - Ingredient "green-chili-raw" quantity is not exact.
+  - Ingredient "green-chili-raw" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "heavy-cream" quantity is not exact.
+  - Ingredient "heavy-cream" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+
+## Matar Paneer
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: 25; mapped records: 12 (7 source-exact quantities, 5 estimated quantities); catalog-listed unmapped items: 13.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "paneer" source match is not verified.
+  - Ingredient "green-peas" source match is not verified.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "tomato" source match is not verified.
+  - Ingredient "cashews" source match is not verified.
+  - Ingredient "ginger" source match is not verified.
+  - Ingredient "garlic" source match is not verified.
+  - Ingredient "green-chili-raw" quantity is not exact.
+  - Ingredient "green-chili-raw" source match is not verified.
+  - Ingredient "table-salt" quantity is not exact.
+  - Ingredient "table-salt" source match is not verified.
+  - Ingredient "coriander-leaves-raw" quantity is not exact.
+  - Ingredient "coriander-leaves-raw" source match is not verified.
+  - Ingredient "turmeric" quantity is not exact.
+  - Ingredient "turmeric" source match is not verified.
+  - Ingredient "cumin-seeds" quantity is not exact.
+  - Ingredient "cumin-seeds" source match is not verified.
+
+## Coconut Milk Pulao
+
+- Current status: `estimated`; recommendation eligible: **false**.
+- Source rows: not reviewed; no count inferred; mapped records: 8 (0 source-exact quantities, 8 estimated quantities); catalog-listed unmapped items: 6.
+- Outstanding evidence:
+  - Recipe composition is not verified.
+  - Nutrition coverage is not complete.
+  - Allergen coverage is not complete.
+  - Serving yield is not verified.
+  - Source ingredient coverage is not verified as complete.
+  - Dietary classification is not verified.
+  - One or more source ingredients are unmapped.
+  - The full source ingredient list is not available.
+  - Verified evidence for composition is missing.
+  - Verified evidence for quantities is missing.
+  - Verified evidence for preparation is missing.
+  - Verified evidence for yield is missing.
+  - Verified evidence for dietaryClassification is missing.
+  - Verified evidence for allergens is missing.
+  - Ingredient "rice-white-raw" quantity is not exact.
+  - Ingredient "rice-white-raw" source match is not verified.
+  - Ingredient "carrot" quantity is not exact.
+  - Ingredient "carrot" source match is not verified.
+  - Ingredient "potato" quantity is not exact.
+  - Ingredient "potato" source match is not verified.
+  - Ingredient "green-peas" quantity is not exact.
+  - Ingredient "green-peas" source match is not verified.
+  - Ingredient "onion" quantity is not exact.
+  - Ingredient "onion" source match is not verified.
+  - Ingredient "cashews" quantity is not exact.
+  - Ingredient "cashews" source match is not verified.
+  - Ingredient "ginger" quantity is not exact.
+  - Ingredient "ginger" source match is not verified.
+  - Ingredient "canola-oil" quantity is not exact.
+  - Ingredient "canola-oil" source match is not verified.
